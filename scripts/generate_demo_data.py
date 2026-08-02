@@ -1,0 +1,288 @@
+#!/usr/bin/env python3
+"""Generate synthetic orders/history/devices CSVs for the CSV demo."""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import pandas as pd
+
+ROOT = Path(__file__).resolve().parents[1]
+DATA = ROOT / "data"
+
+
+def main() -> None:
+    DATA.mkdir(parents=True, exist_ok=True)
+    base = datetime(2026, 7, 1, tzinfo=timezone.utc)
+    history_rows: list[dict] = []
+    order_rows: list[dict] = []
+    device_rows: list[dict] = []
+
+    # Clean users
+    for i in range(20):
+        uid, did, vid, dev = f"U{i}", f"D{i%5}", f"V{i%4}", f"DEV{i}"
+        device_rows.append(
+            {
+                "user_id": uid,
+                "device_id": dev,
+                "cluster_id": f"C{i}",
+                "last_seen_ts": (base + timedelta(days=20)).isoformat(),
+            }
+        )
+        for j in range(12):
+            ts = base + timedelta(days=j * 2, hours=i)
+            # Keep baseline refund rate low so collusion lift stands out.
+            is_refund = 1 if j == 11 and i % 10 == 0 else 0
+            history_rows.append(
+                {
+                    "order_id": f"H-CLEAN-{i}-{j}",
+                    "user_id": uid,
+                    "driver_id": did,
+                    "vendor_id": vid,
+                    "device_id": dev,
+                    "market": "SG",
+                    "vertical": "food" if i % 2 == 0 else "qcommerce",
+                    "amount": 20 + i,
+                    "is_refund": is_refund,
+                    "event_ts": ts.isoformat(),
+                    "status": "delivered",
+                    "claim_reason": "quality" if is_refund else "",
+                }
+            )
+        order_rows.append(
+            {
+                "order_id": f"O-CLEAN-{i}",
+                "user_id": uid,
+                "driver_id": did,
+                "vendor_id": vid,
+                "device_id": dev,
+                "market": "SG",
+                "vertical": "food" if i % 2 == 0 else "qcommerce",
+                "amount": 25 + i,
+                "status": "delivered",
+                "claim_reason": "",
+                "event_ts": (base + timedelta(days=25, hours=i)).isoformat(),
+                "abuse_label": 0,
+                "abuse_label_weak": 0,
+                "fraud_label": 0,
+                "fraud_label_source": "",
+                "strong_fraud_label": 0,
+                "weak_policy_negative": 0,
+            }
+        )
+
+    # Serialerclaimer abuse (not proven fraud)
+    for i in range(15):
+        uid, did, vid, dev = f"UA{i}", f"DA{i%3}", f"VA{i%3}", f"DEVA{i}"
+        device_rows.append(
+            {
+                "user_id": uid,
+                "device_id": dev,
+                "cluster_id": f"CA{i}",
+                "last_seen_ts": (base + timedelta(days=22)).isoformat(),
+            }
+        )
+        for j in range(10):
+            ts = base + timedelta(days=j, hours=i)
+            history_rows.append(
+                {
+                    "order_id": f"H-ABUSE-{i}-{j}",
+                    "user_id": uid,
+                    "driver_id": did,
+                    "vendor_id": vid,
+                    "device_id": dev,
+                    "market": "SG",
+                    "vertical": "food",
+                    "amount": 40 + j,
+                    "is_refund": 1 if j >= 3 else 0,
+                    "event_ts": ts.isoformat(),
+                    "status": "delivered",
+                    "claim_reason": "missing_item" if j >= 3 else "",
+                }
+            )
+        order_rows.append(
+            {
+                "order_id": f"O-ABUSE-{i}",
+                "user_id": uid,
+                "driver_id": did,
+                "vendor_id": vid,
+                "device_id": dev,
+                "market": "SG",
+                "vertical": "food",
+                "amount": 55,
+                "status": "delivered",
+                "claim_reason": "missing_item",
+                "event_ts": (base + timedelta(days=26, hours=i)).isoformat(),
+                "abuse_label": 1,
+                "abuse_label_weak": 1 if i % 2 == 0 else 0,
+                "fraud_label": 0,
+                "fraud_label_source": "",
+                "strong_fraud_label": 0,
+                "weak_policy_negative": 0,
+            }
+        )
+
+    # Proven fraud collusion ring (shared device cluster + UVD)
+    for i in range(12):
+        uid = f"UF{i}"
+        did, vid, dev = "DF0", "VF0", f"DEVF{i%2}"  # two devices, many accounts
+        device_rows.append(
+            {
+                "user_id": uid,
+                "device_id": dev,
+                "cluster_id": "CFARM",
+                "last_seen_ts": (base + timedelta(days=24)).isoformat(),
+            }
+        )
+        for j in range(6):
+            ts = base + timedelta(days=j + 5, hours=i)
+            history_rows.append(
+                {
+                    "order_id": f"H-FRAUD-{i}-{j}",
+                    "user_id": uid,
+                    "driver_id": did,
+                    "vendor_id": vid,
+                    "device_id": dev,
+                    "market": "SG",
+                    "vertical": "food",
+                    "amount": 80,
+                    "is_refund": 1,
+                    "event_ts": ts.isoformat(),
+                    "status": "delivered",
+                    "claim_reason": "wrong_order",
+                }
+            )
+        order_rows.append(
+            {
+                "order_id": f"O-FRAUD-{i}",
+                "user_id": uid,
+                "driver_id": did,
+                "vendor_id": vid,
+                "device_id": dev,
+                "market": "SG",
+                "vertical": "food",
+                "amount": 90,
+                "status": "delivered",
+                "claim_reason": "wrong_order",
+                "event_ts": (base + timedelta(days=27, hours=i)).isoformat(),
+                "abuse_label": 1,
+                "abuse_label_weak": 0,
+                "fraud_label": 1,
+                "fraud_label_source": "proven" if i < 8 else "proxy",
+                "strong_fraud_label": 1 if i < 8 else 0,
+                "weak_policy_negative": 0,
+            }
+        )
+
+    # Proxy-eligible ring (not marked proven; features should trigger proxy rule)
+    for i in range(10):
+        uid = f"UP{i}"
+        did, vid, dev = "DP0", "VP0", f"DEVP{i%3}"
+        device_rows.append(
+            {
+                "user_id": uid,
+                "device_id": dev,
+                "cluster_id": "CPROXY",
+                "last_seen_ts": (base + timedelta(days=23)).isoformat(),
+            }
+        )
+        for j in range(5):
+            ts = base + timedelta(days=j + 8, hours=i)
+            history_rows.append(
+                {
+                    "order_id": f"H-PROXY-{i}-{j}",
+                    "user_id": uid,
+                    "driver_id": did,
+                    "vendor_id": vid,
+                    "device_id": dev,
+                    "market": "ID",
+                    "vertical": "qcommerce",
+                    "amount": 30,
+                    "is_refund": 1 if j >= 1 else 0,
+                    "event_ts": ts.isoformat(),
+                    "status": "delivered",
+                    "claim_reason": "missing_item",
+                }
+            )
+        order_rows.append(
+            {
+                "order_id": f"O-PROXY-{i}",
+                "user_id": uid,
+                "driver_id": did,
+                "vendor_id": vid,
+                "device_id": dev,
+                "market": "ID",
+                "vertical": "qcommerce",
+                "amount": 35,
+                "status": "delivered",
+                "claim_reason": "missing_item",
+                "event_ts": (base + timedelta(days=28, hours=i)).isoformat(),
+                "abuse_label": 1,
+                "abuse_label_weak": 1,
+                "fraud_label": 0,
+                "fraud_label_source": "",
+                "strong_fraud_label": 0,
+                "weak_policy_negative": 0,
+            }
+        )
+
+    # Weak-policy negatives (approved refunds that shouldn't be clean negatives)
+    for i in range(8):
+        uid, did, vid, dev = f"UW{i}", f"DW{i%2}", f"VW{i%2}", f"DEVW{i}"
+        device_rows.append(
+            {
+                "user_id": uid,
+                "device_id": dev,
+                "cluster_id": f"CW{i}",
+                "last_seen_ts": (base + timedelta(days=21)).isoformat(),
+            }
+        )
+        for j in range(4):
+            ts = base + timedelta(days=j + 2, hours=i)
+            history_rows.append(
+                {
+                    "order_id": f"H-WEAK-{i}-{j}",
+                    "user_id": uid,
+                    "driver_id": did,
+                    "vendor_id": vid,
+                    "device_id": dev,
+                    "market": "SG",
+                    "vertical": "food",
+                    "amount": 22,
+                    "is_refund": 1 if j == 3 else 0,
+                    "event_ts": ts.isoformat(),
+                    "status": "delivered",
+                    "claim_reason": "quality" if j == 3 else "",
+                }
+            )
+        order_rows.append(
+            {
+                "order_id": f"O-WEAK-{i}",
+                "user_id": uid,
+                "driver_id": did,
+                "vendor_id": vid,
+                "device_id": dev,
+                "market": "SG",
+                "vertical": "food",
+                "amount": 22,
+                "status": "delivered",
+                "claim_reason": "quality",
+                "event_ts": (base + timedelta(days=24, hours=i)).isoformat(),
+                "abuse_label": 0,
+                "abuse_label_weak": 0,
+                "fraud_label": 0,
+                "fraud_label_source": "",
+                "strong_fraud_label": 0,
+                "weak_policy_negative": 1,
+            }
+        )
+
+    pd.DataFrame(history_rows).to_csv(DATA / "history.csv", index=False)
+    pd.DataFrame(order_rows).to_csv(DATA / "orders.csv", index=False)
+    pd.DataFrame(device_rows).to_csv(DATA / "devices.csv", index=False)
+    print(f"Wrote {len(history_rows)} history, {len(order_rows)} orders, {len(device_rows)} devices to {DATA}")
+
+
+if __name__ == "__main__":
+    main()

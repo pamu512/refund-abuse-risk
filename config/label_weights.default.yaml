@@ -1,0 +1,16 @@
+# Training label / sample weights for the two-head model.
+windows_days: [7, 30, 90]
+fraud_proxy_weight: 0.4
+fraud_proven_weight: 1.0
+abuse_positive_weight: 1.0
+abuse_weak_positive_weight: 0.6
+# Negatives from weak-policy auto-approvals are down-weighted (not clean negatives).
+weak_policy_negative_weight: 0.3
+clean_negative_weight: 1.0
+
+# High-confidence fraud proxy rule thresholds (feature space).
+proxy_rules:
+  min_device_cluster_size: 4
+  min_accounts_per_device: 3
+  min_uvd_refund_lift: 1.5
+  min_coordinated_refund_rate: 0.35

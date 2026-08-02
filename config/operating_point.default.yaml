@@ -1,0 +1,36 @@
+# Suggested tier bands on combined risk (0-100). Downstream owns enforcement.
+model_version: "0.1.0"
+policy_version: "0.1.0"
+
+# Combined score = max(abuse, fraud) after band adjustment; tiers are advisory.
+tiers:
+  auto_approve:
+    max_score: 25
+  soft_friction:
+    max_score: 50
+  hold_review:
+    max_score: 75
+  auto_deny:
+    max_score: 100
+
+# Entity prior sets a risk band; order features may move within band.
+bands:
+  low:
+    max_entity_prior: 30
+    score_floor: 0
+    score_ceiling: 45
+  medium:
+    max_entity_prior: 60
+    score_floor: 20
+    score_ceiling: 75
+  high:
+    max_entity_prior: 85
+    score_floor: 45
+    score_ceiling: 95
+  extreme:
+    max_entity_prior: 100
+    score_floor: 70
+    score_ceiling: 100
+
+# Material delta that triggers open-order rescoring when entity/link risk changes.
+entity_risk_change_delta: 10.0

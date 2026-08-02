@@ -1,0 +1,62 @@
+# Ops-tunable policy overlay. Scoped by market × vertical × entity_type via overlays.
+defaults:
+  windows_days: [7, 30, 90]
+  hard_gates:
+    # Rolling caps — breach forces hard gate (suggested auto_deny).
+    user:
+      max_refund_count_7d: 5
+      max_refund_count_30d: 12
+      max_refund_rate_30d: 0.35
+      max_refund_gmv_pct_30d: 0.40
+    driver:
+      max_refund_count_30d: 20
+      max_refund_rate_30d: 0.25
+    vendor:
+      max_refund_count_30d: 40
+      max_refund_rate_30d: 0.30
+      max_refund_gmv_pct_30d: 0.35
+    link:
+      ud_score_hard: 85
+      uv_score_hard: 85
+      vd_score_hard: 85
+      uvd_score_hard: 80
+      device_cluster_score_hard: 80
+    # Strong fraud label always hard-gates.
+    strong_fraud_label: true
+
+  # Soft contribution weights when assembling evidence (not the ML model).
+  evidence_weights:
+    user: 0.25
+    driver: 0.15
+    vendor: 0.15
+    ud: 0.10
+    uv: 0.10
+    vd: 0.08
+    uvd: 0.12
+    device: 0.05
+
+# Market × vertical overlays (merged over defaults).
+overlays:
+  - market: "SG"
+    vertical: "food"
+    entity_type: "user"
+    patch:
+      hard_gates:
+        user:
+          max_refund_count_7d: 4
+          max_refund_rate_30d: 0.30
+  - market: "SG"
+    vertical: "qcommerce"
+    entity_type: "user"
+    patch:
+      hard_gates:
+        user:
+          max_refund_count_7d: 6
+          max_refund_rate_30d: 0.40
+  - market: "ID"
+    vertical: "food"
+    entity_type: "vendor"
+    patch:
+      hard_gates:
+        vendor:
+          max_refund_rate_30d: 0.35

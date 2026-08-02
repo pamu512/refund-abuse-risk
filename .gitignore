@@ -1,0 +1,13 @@
+.worktrees/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.superpowers/
+examples/csv_demo/out.json
+examples/csv_demo/backtest_metrics.json
+models/*.joblib
+!data/.gitkeep

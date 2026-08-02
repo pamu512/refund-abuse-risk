@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "refund-abuse-risk"
+version = "0.1.0"
+description = "Graph/ML toolkit for refund abuse and fraud scoring on food delivery and quick commerce"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Refund Abuse Risk Contributors" }]
+dependencies = [
+  "pydantic>=2.9.0",
+  "numpy>=1.26.0",
+  "scikit-learn>=1.5.0",
+  "pandas>=2.2.0",
+  "pyyaml>=6.0.0",
+  "joblib>=1.4.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0", "build>=1.2.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "."]
