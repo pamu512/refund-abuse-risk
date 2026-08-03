@@ -11,3 +11,7 @@ examples/csv_demo/out.json
 examples/csv_demo/backtest_metrics.json
 models/*.joblib
 !data/.gitkeep
+data/*.csv
+data/*.db
+data/warehouse/
+examples/csv_demo/tuned_thresholds.yaml

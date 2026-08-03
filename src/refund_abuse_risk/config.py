@@ -43,6 +43,18 @@ def load_operating_point(config_dir: Path | None = None) -> dict[str, Any]:
     return load_yaml((config_dir or default_config_dir()) / "operating_point.default.yaml")
 
 
+def load_guardrails(config_dir: Path | None = None) -> dict[str, Any]:
+    return load_yaml((config_dir or default_config_dir()) / "policy_guardrails.default.yaml")
+
+
+def load_behavior_baselines(config_dir: Path | None = None) -> dict[str, Any]:
+    return load_yaml((config_dir or default_config_dir()) / "behavior_baselines.default.yaml")
+
+
+def load_bipartite_anomaly(config_dir: Path | None = None) -> dict[str, Any]:
+    return load_yaml((config_dir or default_config_dir()) / "bipartite_anomaly.default.yaml")
+
+
 def resolve_policy(
     policy: dict[str, Any],
     *,

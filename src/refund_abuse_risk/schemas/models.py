@@ -14,6 +14,15 @@ class SuggestedTier(str, Enum):
     AUTO_DENY = "auto_deny"
 
 
+class RefundEffect(str, Enum):
+    """Downstream refund UX hint (detector does not enforce)."""
+
+    REFUND_AUTO_GRANT = "refund_auto_grant"
+    REFUND_STEP_UP = "refund_step_up"
+    REFUND_MANUAL_REVIEW = "refund_manual_review"
+    REFUND_BLOCK = "refund_block"
+
+
 class EntityScores(BaseModel):
     user: float = 0.0
     driver: float = 0.0
@@ -52,6 +61,7 @@ class OrderRiskSnapshot(BaseModel):
     link_scores: LinkScores
     device_cluster_score: float = 0.0
     suggested_tier: SuggestedTier
+    refund_effect: RefundEffect = RefundEffect.REFUND_AUTO_GRANT
     reason_codes: list[str] = Field(default_factory=list)
     evidence_pack: EvidencePack = Field(default_factory=EvidencePack)
     hard_gated: bool = False
@@ -60,6 +70,11 @@ class OrderRiskSnapshot(BaseModel):
     scored_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     entity_prior: float = 0.0
     combined_score: float = 0.0
+    # Max precision discount from elevated clean baselines (entity / pair / combo).
+    precision_discount: float = 0.0
+    threshold_relax_points: float = 0.0
+    baseline_hil_required: bool = False
+    baseline_gate: dict[str, Any] = Field(default_factory=dict)
 
 
 class LifecycleEvent(str, Enum):

@@ -6,10 +6,8 @@ Zero-network end-to-end on synthetic CSVs under `data/`.
 pip install -e ".[dev]"
 python scripts/generate_demo_data.py
 python -m examples.csv_demo
-python scripts/backtest.py
 ```
 
-Outputs:
+Writes `examples/csv_demo/out.json` with order snapshots (abuse/fraud scores, suggested tier, reason codes, evidence pack).
 
-- `examples/csv_demo/out.json` — scored order snapshots (abuse/fraud, tier, evidence)
-- `examples/csv_demo/backtest_metrics.json` — holdout metrics by head and proven/proxy fraud slices
+See the repo [README](../../README.md) for how scoring works, and [docs/MANUAL.md](../../docs/MANUAL.md) for tuning and operations.

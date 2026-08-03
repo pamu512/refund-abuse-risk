@@ -1,0 +1,82 @@
+# Behavioral baselines — head-score space (same units as tier thresholds).
+enabled: true
+baseline_version: "0.3.0"
+
+# Which head score (0-100) each entity kind tracks.
+kind_heads:
+  user: abuse
+  uv: abuse
+  driver: fraud
+  vendor: fraud
+  device: fraud
+  ud: fraud
+  vd: fraud
+  uvd: fraud
+
+under_threshold:
+  abuse_fallback: 35.0
+  fraud_fallback: 30.0
+
+settled_statuses:
+  - delivered
+  - claim
+  - refunded
+  - completed
+
+baseline_qualify:
+  min_observations: 10
+  min_under_rate: 0.80
+  lookback_events: 50
+  lookback_days: 30
+  revoke_under_rate: 0.50
+  pair_min_cooccur: 3
+
+# Peer baselines (Stripe-style): market × vertical × tenure × head.
+cohort:
+  enabled: true
+  min_support: 30
+  lookback_events: 500
+  # Discount when score is high vs cohort even if self-baseline looks "stable bad".
+  min_lift: 1.5
+  min_abs_delta: 15.0
+  tenure_buckets:
+    - {name: new, max_days: 14}
+    - {name: mid, max_days: 90}
+    - {name: mature, max_days: null}
+
+elevation:
+  min_abs_delta: 15.0
+  min_lift: 1.5
+  require_clean_baseline: true
+  min_elevated_streak: 2
+
+precision_discount:
+  max: 0.10
+  per_lift_unit: 0.04
+  threshold_relax_per_pp: 1.0
+  max_auto_relax_points: 5.0
+
+# Clean self + clean device + low scores → tighten thresholds (easier approve).
+trust_credit:
+  enabled: true
+  require_user_clean: true
+  require_device_clean: true
+  max_abuse_score: 25.0
+  max_fraud_score: 20.0
+  abuse_tighten_points: 5.0
+  fraud_tighten_points: 5.0
+
+entity_kinds:
+  - user
+  - driver
+  - vendor
+  - device
+  - ud
+  - uv
+  - vd
+  - uvd
+
+warehouse:
+  table: entity_behavior_baselines
+  cohort_table: cohort_behavior_baselines
+  partition_keys: [as_of_date, market, vertical, entity_kind]

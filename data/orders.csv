@@ -64,3 +64,15 @@ O-WEAK-4,UW4,DW0,VW0,DEVW4,SG,food,22,delivered,quality,2026-07-25T04:00:00+00:0
 O-WEAK-5,UW5,DW1,VW1,DEVW5,SG,food,22,delivered,quality,2026-07-25T05:00:00+00:00,0,0,0,,0,1
 O-WEAK-6,UW6,DW0,VW0,DEVW6,SG,food,22,delivered,quality,2026-07-25T06:00:00+00:00,0,0,0,,0,1
 O-WEAK-7,UW7,DW1,VW1,DEVW7,SG,food,22,delivered,quality,2026-07-25T07:00:00+00:00,0,0,0,,0,1
+O-NEW-0,UN0,DN0,VN0,DEVN0,SG,food,25,delivered,quality,2026-07-27T00:00:00+00:00,0,0,0,,0,0
+O-NEW-1,UN1,DN1,VN1,DEVN1,SG,food,25,delivered,quality,2026-07-27T01:00:00+00:00,0,0,0,,0,0
+O-NEW-2,UN2,DN2,VN2,DEVN2,SG,food,25,delivered,quality,2026-07-27T02:00:00+00:00,0,0,0,,0,0
+O-NEW-3,UN3,DN3,VN3,DEVN3,SG,food,25,delivered,quality,2026-07-27T03:00:00+00:00,0,0,0,,0,0
+O-NEW-4,UN4,DN4,VN4,DEVN4,SG,food,25,delivered,quality,2026-07-27T04:00:00+00:00,0,0,0,,0,0
+O-NEWRING-0,UNR0,DF0,VF0,DEVF0,SG,food,30,delivered,missing_item,2026-07-28T00:00:00+00:00,1,1,0,,0,0
+O-NEWRING-1,UNR1,DF0,VF0,DEVF1,SG,food,30,delivered,missing_item,2026-07-28T01:00:00+00:00,1,1,0,,0,0
+O-NEWRING-2,UNR2,DF0,VF0,DEVF0,SG,food,30,delivered,missing_item,2026-07-28T02:00:00+00:00,1,1,0,,0,0
+O-BURN-0,UB0,D0,V0,DEVB0,SG,food,40,delivered,missing_item,2026-07-28T00:00:00+00:00,1,0,0,,0,0
+O-BURN-1,UB1,D1,V1,DEVB1,SG,food,40,delivered,missing_item,2026-07-28T01:00:00+00:00,1,0,0,,0,0
+O-BURN-2,UB2,D2,V2,DEVB2,SG,food,40,delivered,missing_item,2026-07-28T02:00:00+00:00,1,0,0,,0,0
+O-BURN-3,UB3,D3,V3,DEVB3,SG,food,40,delivered,missing_item,2026-07-28T03:00:00+00:00,1,0,0,,0,0

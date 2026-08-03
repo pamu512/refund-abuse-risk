@@ -1,0 +1,16 @@
+# Offline user↔vendor bipartite anomaly (Grab-shaped discovery; no GNN).
+enabled: true
+version: "0.1.0"
+relation: uv  # user ↔ vendor only
+
+min_edge_orders: 3
+min_edge_refunds: 2
+min_lift: 2.0
+min_refund_rate: 0.25
+# Node score = max incident elevated edge score.
+node_score: max_edge
+
+warehouse:
+  edge_table: bipartite_uv_edges
+  node_table: bipartite_uv_nodes
+  partition_keys: [as_of_date, market, vertical]

@@ -1,11 +1,23 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
-from refund_abuse_risk.config import load_label_weights, load_operating_point, load_policy
+from refund_abuse_risk.baselines.cohort import CohortBaselineStore
+from refund_abuse_risk.baselines.gate import (
+    apply_precision_discount_to_operating_point,
+    evaluate_baseline_gate,
+)
+from refund_abuse_risk.baselines.store import BehaviorBaselineStore
+from refund_abuse_risk.config import (
+    load_behavior_baselines,
+    load_label_weights,
+    load_operating_point,
+    load_policy,
+)
 from refund_abuse_risk.features.builders import build_order_feature_frame, build_order_feature_row
 from refund_abuse_risk.graph.entities import EntityGraphIndex
 from refund_abuse_risk.model.two_head import (
@@ -26,17 +38,27 @@ from refund_abuse_risk.scoring.policy import (
     combine_scores,
     evaluate_hard_gates,
     policy_hash,
+    tier_to_refund_effect,
 )
+
+_ROOT = Path(__file__).resolve().parents[3]
+_DEFAULT_BASELINE_DB = _ROOT / "data" / "behavior_baselines.db"
 
 
 class OrderRiskCache:
     """Precomputed order snapshots for sync claim-path reads."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        baseline_store: BehaviorBaselineStore | None = None,
+        cohort_store: CohortBaselineStore | None = None,
+    ) -> None:
         self._snapshots: dict[str, OrderRiskSnapshot] = {}
         self._orders: dict[str, dict[str, Any]] = {}
         self._entity_scores: dict[str, float] = {}
         self.graph = EntityGraphIndex()
+        self.baseline_store = baseline_store
+        self.cohort_store = cohort_store
 
     def get(self, order_id: str) -> OrderRiskSnapshot | None:
         return self._snapshots.get(order_id)
@@ -62,12 +84,19 @@ def score_feature_row(
     *,
     policy: dict[str, Any] | None = None,
     operating_point: dict[str, Any] | None = None,
+    baseline_store: BehaviorBaselineStore | None = None,
+    cohort_store: CohortBaselineStore | None = None,
+    baseline_cfg: dict[str, Any] | None = None,
+    update_baselines: bool = True,
 ) -> OrderRiskSnapshot:
     policy = policy or load_policy()
     operating_point = operating_point or load_operating_point()
-    frame = pd.DataFrame([dict(row)])
-    scored = model.predict_proba(frame).iloc[0]
+    baseline_cfg = baseline_cfg if baseline_cfg is not None else load_behavior_baselines()
     features = dict(row)
+    # Attach read-only baseline features before predict when store is available.
+    if baseline_store is not None:
+        features.update(baseline_store.feature_map_for_order(features))
+    scored = model.predict_proba(pd.DataFrame([features])).iloc[0]
 
     abuse_score = float(scored["abuse_score"])
     fraud_score = float(scored["fraud_score"])
@@ -75,6 +104,28 @@ def score_feature_row(
     link_scores = link_scores_from_features(features)
     device_score = device_cluster_score_from_features(features)
     prior = entity_prior_from_features(features)
+
+    baseline_gate = evaluate_baseline_gate(
+        features,
+        abuse_score=abuse_score,
+        fraud_score=fraud_score,
+        store=baseline_store,
+        cohort_store=cohort_store,
+        baseline_cfg=baseline_cfg,
+        operating_point=operating_point,
+        update_store=update_baselines and baseline_store is not None,
+    )
+    # Cohort lifts available for next-order model features / evidence.
+    features.update(baseline_gate.cohort_features)
+    decision_op = apply_precision_discount_to_operating_point(
+        operating_point,
+        abuse_precision_discount=baseline_gate.abuse_precision_discount,
+        fraud_precision_discount=baseline_gate.fraud_precision_discount,
+        abuse_relax_points=baseline_gate.abuse_relax_points,
+        fraud_relax_points=baseline_gate.fraud_relax_points,
+        abuse_tighten_points=baseline_gate.abuse_tighten_points,
+        fraud_tighten_points=baseline_gate.fraud_tighten_points,
+    )
 
     hard_gated, gate_items = evaluate_hard_gates(
         features,
@@ -85,11 +136,12 @@ def score_feature_row(
         market=str(features.get("market", "")),
         vertical=str(features.get("vertical", "food")),
     )
+    gate_items = list(gate_items) + list(baseline_gate.evidence_items)
     combined, tier = combine_scores(
         abuse_score,
         fraud_score,
         prior,
-        operating_point,
+        decision_op,
         hard_gated=hard_gated,
     )
     evidence = build_evidence_pack(
@@ -116,6 +168,7 @@ def score_feature_row(
         link_scores=LinkScores(**link_scores),
         device_cluster_score=device_score,
         suggested_tier=tier,
+        refund_effect=tier_to_refund_effect(tier),
         reason_codes=reason_codes,
         evidence_pack=evidence,
         hard_gated=hard_gated,
@@ -124,6 +177,10 @@ def score_feature_row(
         scored_at=datetime.now(timezone.utc),
         entity_prior=prior,
         combined_score=combined,
+        precision_discount=float(baseline_gate.precision_discount),
+        threshold_relax_points=float(baseline_gate.threshold_relax_points),
+        baseline_hil_required=bool(baseline_gate.hil_required),
+        baseline_gate=baseline_gate.to_dict(),
     )
 
 
@@ -133,17 +190,38 @@ def precompute_orders(
     devices: pd.DataFrame,
     model: TwoHeadModel,
     *,
+    users: pd.DataFrame | None = None,
     cache: OrderRiskCache | None = None,
     policy: dict[str, Any] | None = None,
     operating_point: dict[str, Any] | None = None,
+    baseline_store: BehaviorBaselineStore | None = None,
+    baseline_cfg: dict[str, Any] | None = None,
+    update_baselines: bool = True,
 ) -> OrderRiskCache:
-    cache = cache or OrderRiskCache()
+    baseline_cfg = baseline_cfg if baseline_cfg is not None else load_behavior_baselines()
+    if baseline_store is None and baseline_cfg.get("enabled", True):
+        baseline_store = BehaviorBaselineStore(_DEFAULT_BASELINE_DB)
+    cohort_store = CohortBaselineStore(_DEFAULT_BASELINE_DB)
+    cache = cache or OrderRiskCache(baseline_store=baseline_store, cohort_store=cohort_store)
+    if cache.baseline_store is None:
+        cache.baseline_store = baseline_store
+    if cache.cohort_store is None:
+        cache.cohort_store = cohort_store
     policy = policy or load_policy()
     operating_point = operating_point or load_operating_point()
-    feat = build_order_feature_frame(orders, history, devices)
+    feat = build_order_feature_frame(orders, history, devices, users=users)
     scored = model.predict_proba(feat)
     for _, row in scored.iterrows():
-        snap = score_feature_row(row, model, policy=policy, operating_point=operating_point)
+        snap = score_feature_row(
+            row,
+            model,
+            policy=policy,
+            operating_point=operating_point,
+            baseline_store=cache.baseline_store,
+            cohort_store=cache.cohort_store,
+            baseline_cfg=baseline_cfg,
+            update_baselines=update_baselines,
+        )
         order = row.to_dict()
         cache.put(snap, order)
         # Update standing entity/link scores for risk-change detection.
@@ -170,14 +248,25 @@ def refresh_order(
     model: TwoHeadModel,
     cache: OrderRiskCache,
     *,
+    users: pd.DataFrame | None = None,
     event: LifecycleEvent | str | None = None,
     policy: dict[str, Any] | None = None,
     operating_point: dict[str, Any] | None = None,
 ) -> OrderRiskSnapshot:
     _ = event  # lifecycle marker for callers/logging; features use current order row
-    feat = build_order_feature_row(order, history, devices)
+    feat = build_order_feature_row(order, history, devices, users=users)
     row = {**order, **feat}
-    snap = score_feature_row(row, model, policy=policy, operating_point=operating_point)
+    # Lifecycle refresh: only settled events write baselines (config settled_statuses).
+    if event is not None:
+        row["lifecycle_event"] = event.value if isinstance(event, LifecycleEvent) else str(event)
+    snap = score_feature_row(
+        row,
+        model,
+        policy=policy,
+        operating_point=operating_point,
+        baseline_store=cache.baseline_store,
+        cohort_store=cache.cohort_store,
+    )
     cache.put(snap, order)
     return snap
 
@@ -191,6 +280,7 @@ def on_entity_risk_change(
     cache: OrderRiskCache,
     *,
     new_scores: dict[str, float],
+    users: pd.DataFrame | None = None,
     operating_point: dict[str, Any] | None = None,
     policy: dict[str, Any] | None = None,
 ) -> list[OrderRiskSnapshot]:
@@ -220,6 +310,7 @@ def on_entity_risk_change(
                 devices,
                 model,
                 cache,
+                users=users,
                 event=LifecycleEvent.CLAIM,
                 policy=policy,
                 operating_point=operating_point,
@@ -233,11 +324,14 @@ def train_two_head(
     history: pd.DataFrame,
     devices: pd.DataFrame,
     *,
+    users: pd.DataFrame | None = None,
     label_weights: dict[str, Any] | None = None,
+    operating_point: dict[str, Any] | None = None,
 ) -> TwoHeadModel:
     label_weights = label_weights or load_label_weights()
-    feat = build_order_feature_frame(train_orders, history, devices)
-    model = TwoHeadModel()
+    operating_point = operating_point or load_operating_point()
+    feat = build_order_feature_frame(train_orders, history, devices, users=users)
+    model = TwoHeadModel(model_version=str(operating_point.get("model_version", "0.2.0")))
     model.fit(feat, label_weights)
     return model
 

@@ -1,8 +1,30 @@
-# Suggested tier bands on combined risk (0-100). Downstream owns enforcement.
-model_version: "0.1.0"
-policy_version: "0.1.0"
+# Suggested tiers from calibrated heads. Downstream owns enforcement.
+model_version: "0.4.0"
+policy_version: "0.4.0"
 
-# Combined score = max(abuse, fraud) after band adjustment; tiers are advisory.
+# learning_primary: tier from abuse/fraud head thresholds (no entity-prior banding).
+# score_only: fall back to mapping display score via tiers.*.max_score.
+decision_mode: learning_primary
+
+# Display score only (monitoring / UI). Does not band or override head tiers.
+score_display:
+  abuse: 0.5
+  fraud: 0.5
+
+# Head thresholds — primary decision knobs (no retrain).
+# Soft thresholds target ~target_pattern_recall of labeled abuse|fraud patterns.
+# Recompute suggestions with: python scripts/backtest.py --tune
+# (writes examples/csv_demo/tuned_thresholds.yaml; use --write-config to promote).
+head_thresholds:
+  target_pattern_recall: 0.98
+  abuse_soft_friction: 35
+  fraud_soft_friction: 30
+  abuse_hold_review: 50
+  fraud_hold_review: 45
+  abuse_auto_deny: 75
+  fraud_auto_deny: 65
+
+# Secondary (used only when decision_mode: score_only).
 tiers:
   auto_approve:
     max_score: 25
@@ -13,24 +35,4 @@ tiers:
   auto_deny:
     max_score: 100
 
-# Entity prior sets a risk band; order features may move within band.
-bands:
-  low:
-    max_entity_prior: 30
-    score_floor: 0
-    score_ceiling: 45
-  medium:
-    max_entity_prior: 60
-    score_floor: 20
-    score_ceiling: 75
-  high:
-    max_entity_prior: 85
-    score_floor: 45
-    score_ceiling: 95
-  extreme:
-    max_entity_prior: 100
-    score_floor: 70
-    score_ceiling: 100
-
-# Material delta that triggers open-order rescoring when entity/link risk changes.
 entity_risk_change_delta: 10.0

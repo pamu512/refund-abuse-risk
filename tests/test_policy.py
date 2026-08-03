@@ -2,83 +2,118 @@ from __future__ import annotations
 
 from refund_abuse_risk.config import load_operating_point, load_policy
 from refund_abuse_risk.schemas.models import SuggestedTier
-from refund_abuse_risk.scoring.policy import combine_scores, evaluate_hard_gates, tier_for_score
+from refund_abuse_risk.scoring.policy import (
+    combine_scores,
+    evaluate_hard_gates,
+    tier_for_score,
+    tier_from_heads,
+)
+from refund_abuse_risk.scoring.thresholds import (
+    pattern_flag_recall,
+    recommend_head_thresholds,
+    threshold_at_recall,
+)
 
 
-def test_hard_gate_user_refund_cap() -> None:
+def test_strong_fraud_is_only_hard_gate() -> None:
     policy = load_policy()
     features = {
         "user_id": "u1",
         "driver_id": "d1",
         "vendor_id": "v1",
         "device_id": "dev1",
+        "user_days_since_signup": 45,
+        "user_lifetime_orders": 20,
+        "user_lifetime_refund_count": 9,
+        "user_refund_to_ltv_ratio": 0.9,
+        "user_orders_30d": 12,
         "user_refund_count_7d": 9,
         "user_refund_count_30d": 9,
-        "user_refund_rate_30d": 0.1,
-        "user_refund_gmv_pct_30d": 0.1,
-        "driver_refund_count_30d": 0,
-        "driver_refund_rate_30d": 0,
-        "vendor_refund_count_30d": 0,
-        "vendor_refund_rate_30d": 0,
-        "vendor_refund_gmv_pct_30d": 0,
+        "user_refund_rate_30d": 0.9,
+        "user_refund_gmv_pct_30d": 0.9,
+        "combined_refund_count_30d": 20,
+        "related_max_refund_rate_30d": 0.9,
         "strong_fraud_label": 0,
     }
     gated, items = evaluate_hard_gates(
         features,
-        entity_scores={"user": 40, "driver": 10, "vendor": 10},
-        link_scores={"ud": 10, "uv": 10, "vd": 10, "uvd": 10},
-        device_cluster_score=10,
+        entity_scores={"user": 90, "driver": 90, "vendor": 90},
+        link_scores={"ud": 90, "uv": 90, "vd": 90, "uvd": 90},
+        device_cluster_score=90,
         policy=policy,
         market="SG",
         vertical="food",
     )
-    assert gated is True
-    assert any(i.reason_code == "USER_REFUND_COUNT_7D" for i in items)
+    assert gated is False
+    assert items == []
 
 
-def test_hard_gate_uvd_and_device() -> None:
+def test_strong_fraud_hard_gates() -> None:
     policy = load_policy()
-    features = {
-        "user_id": "u1",
-        "driver_id": "d1",
-        "vendor_id": "v1",
-        "device_id": "dev1",
-        "user_refund_count_7d": 0,
-        "user_refund_count_30d": 0,
-        "user_refund_rate_30d": 0,
-        "user_refund_gmv_pct_30d": 0,
-        "driver_refund_count_30d": 0,
-        "driver_refund_rate_30d": 0,
-        "vendor_refund_count_30d": 0,
-        "vendor_refund_rate_30d": 0,
-        "vendor_refund_gmv_pct_30d": 0,
-        "strong_fraud_label": 0,
-    }
     gated, items = evaluate_hard_gates(
-        features,
-        entity_scores={"user": 10, "driver": 10, "vendor": 10},
-        link_scores={"ud": 10, "uv": 10, "vd": 10, "uvd": 90},
-        device_cluster_score=85,
+        {
+            "user_id": "u1",
+            "strong_fraud_label": 1,
+        },
+        entity_scores={},
+        link_scores={},
+        device_cluster_score=0,
         policy=policy,
         market="SG",
         vertical="food",
     )
     assert gated is True
-    codes = {i.reason_code for i in items}
-    assert "LINK_UVD_HARD" in codes
-    assert "DEVICE_CLUSTER_HARD" in codes
+    assert any(i.reason_code == "STRONG_FRAUD_LABEL" for i in items)
 
 
 def test_hard_gate_forces_auto_deny() -> None:
     op = load_operating_point()
     combined, tier = combine_scores(10.0, 10.0, 20.0, op, hard_gated=True)
     assert tier == SuggestedTier.AUTO_DENY
-    assert combined >= 76.0
+    assert combined >= 90.0
 
 
-def test_tier_bands() -> None:
+def test_tier_from_heads() -> None:
+    op = load_operating_point()
+    assert tier_from_heads(10, 10, op) == SuggestedTier.AUTO_APPROVE
+    assert tier_from_heads(40, 10, op) == SuggestedTier.SOFT_FRICTION
+    assert tier_from_heads(55, 10, op) == SuggestedTier.HOLD_REVIEW
+    assert tier_from_heads(10, 70, op) == SuggestedTier.AUTO_DENY
+
+
+def test_tier_bands_secondary() -> None:
     op = load_operating_point()
     assert tier_for_score(10, op) == SuggestedTier.AUTO_APPROVE
     assert tier_for_score(40, op) == SuggestedTier.SOFT_FRICTION
     assert tier_for_score(60, op) == SuggestedTier.HOLD_REVIEW
     assert tier_for_score(90, op) == SuggestedTier.AUTO_DENY
+
+
+def test_combine_uses_heads_not_prior_banding() -> None:
+    op = load_operating_point()
+    low_prior_combined, tier_low = combine_scores(80.0, 10.0, 5.0, op, hard_gated=False)
+    high_prior_combined, tier_high = combine_scores(80.0, 10.0, 95.0, op, hard_gated=False)
+    # Prior must not change tier or warp the score under learning_primary.
+    assert tier_low == tier_high
+    assert low_prior_combined == high_prior_combined
+    assert tier_low == SuggestedTier.AUTO_DENY  # abuse 80 >= abuse_auto_deny 75
+
+
+def test_high_fraud_raises_display_and_tier() -> None:
+    op = load_operating_point()
+    low_fraud, tier_low = combine_scores(40.0, 10.0, 20.0, op, hard_gated=False)
+    high_fraud, tier_high = combine_scores(40.0, 90.0, 20.0, op, hard_gated=False)
+    assert high_fraud > low_fraud
+    assert tier_high == SuggestedTier.AUTO_DENY
+    assert tier_low in {SuggestedTier.SOFT_FRICTION, SuggestedTier.HOLD_REVIEW}
+
+
+def test_threshold_at_recall_and_recommend() -> None:
+    y = [1, 1, 1, 0, 0, 0, 0, 0, 0, 0]
+    s = [90, 80, 40, 30, 20, 10, 5, 4, 3, 2]
+    thr = threshold_at_recall(y, s, 0.98)
+    assert thr is not None
+    assert thr <= 40.0
+    rec = recommend_head_thresholds(y, s, y, s, target_recall=0.98)
+    assert rec["abuse_soft_friction"] <= rec["abuse_hold_review"] <= rec["abuse_auto_deny"]
+    assert pattern_flag_recall(y, y, s, s, rec["abuse_soft_friction"], rec["fraud_soft_friction"]) >= 0.98

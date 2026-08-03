@@ -8,9 +8,12 @@ abuse_weak_positive_weight: 0.6
 weak_policy_negative_weight: 0.3
 clean_negative_weight: 1.0
 
-# High-confidence fraud proxy rule thresholds (feature space).
+# High-confidence fraud proxy — requires support + concentration, not rate alone.
 proxy_rules:
   min_device_cluster_size: 4
   min_accounts_per_device: 3
   min_uvd_refund_lift: 1.5
+  min_uvd_refund_share: 0.5
+  min_uvd_cooccur: 3
   min_coordinated_refund_rate: 0.35
+  min_user_orders_30d: 5

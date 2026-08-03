@@ -18,10 +18,15 @@ def main() -> None:
     history_rows: list[dict] = []
     order_rows: list[dict] = []
     device_rows: list[dict] = []
+    user_rows: list[dict] = []
 
-    # Clean users
+    def add_user(uid: str, signup: datetime) -> None:
+        user_rows.append({"user_id": uid, "signup_ts": signup.isoformat()})
+
+    # Clean users — mature, high LTV, rare refunds
     for i in range(20):
         uid, did, vid, dev = f"U{i}", f"D{i%5}", f"V{i%4}", f"DEV{i}"
+        add_user(uid, base - timedelta(days=180 + i))
         device_rows.append(
             {
                 "user_id": uid,
@@ -72,9 +77,10 @@ def main() -> None:
             }
         )
 
-    # Serialerclaimer abuse (not proven fraud)
+    # Serial claimant abuse — mature enough for count/rate gates + high LTV burn
     for i in range(15):
         uid, did, vid, dev = f"UA{i}", f"DA{i%3}", f"VA{i%3}", f"DEVA{i}"
+        add_user(uid, base - timedelta(days=60 + i))
         device_rows.append(
             {
                 "user_id": uid,
@@ -127,6 +133,7 @@ def main() -> None:
     for i in range(12):
         uid = f"UF{i}"
         did, vid, dev = "DF0", "VF0", f"DEVF{i%2}"  # two devices, many accounts
+        add_user(uid, base - timedelta(days=30 + i))
         device_rows.append(
             {
                 "user_id": uid,
@@ -179,6 +186,7 @@ def main() -> None:
     for i in range(10):
         uid = f"UP{i}"
         did, vid, dev = "DP0", "VP0", f"DEVP{i%3}"
+        add_user(uid, base - timedelta(days=45 + i))
         device_rows.append(
             {
                 "user_id": uid,
@@ -230,6 +238,7 @@ def main() -> None:
     # Weak-policy negatives (approved refunds that shouldn't be clean negatives)
     for i in range(8):
         uid, did, vid, dev = f"UW{i}", f"DW{i%2}", f"VW{i%2}", f"DEVW{i}"
+        add_user(uid, base - timedelta(days=90 + i))
         device_rows.append(
             {
                 "user_id": uid,
@@ -278,10 +287,172 @@ def main() -> None:
             }
         )
 
+    # New user with 1-2 refunds, still positive LTV — isolated UVD, should NOT hard-gate
+    for i in range(5):
+        uid, did, vid, dev = f"UN{i}", f"DN{i}", f"VN{i}", f"DEVN{i}"
+        add_user(uid, base + timedelta(days=20))  # signed up ~5 days before scoring
+        device_rows.append(
+            {
+                "user_id": uid,
+                "device_id": dev,
+                "cluster_id": f"CN{i}",
+                "last_seen_ts": (base + timedelta(days=24)).isoformat(),
+            }
+        )
+        for j in range(4):
+            ts = base + timedelta(days=22 + j, hours=i)
+            history_rows.append(
+                {
+                    "order_id": f"H-NEW-{i}-{j}",
+                    "user_id": uid,
+                    "driver_id": did,
+                    "vendor_id": vid,
+                    "device_id": dev,
+                    "market": "SG",
+                    "vertical": "food",
+                    "amount": 25,
+                    # 1 refund / 4 orders → refund_to_ltv=0.25, below early-life burn 0.60
+                    "is_refund": 1 if j == 3 else 0,
+                    "event_ts": ts.isoformat(),
+                    "status": "delivered",
+                    "claim_reason": "quality" if j == 3 else "",
+                }
+            )
+        order_rows.append(
+            {
+                "order_id": f"O-NEW-{i}",
+                "user_id": uid,
+                "driver_id": did,
+                "vendor_id": vid,
+                "device_id": dev,
+                "market": "SG",
+                "vertical": "food",
+                "amount": 25,
+                "status": "delivered",
+                "claim_reason": "quality",
+                "event_ts": (base + timedelta(days=26, hours=i)).isoformat(),
+                "abuse_label": 0,
+                "abuse_label_weak": 0,
+                "fraud_label": 0,
+                "fraud_label_source": "",
+                "strong_fraud_label": 0,
+                "weak_policy_negative": 0,
+            }
+        )
+
+    # New user attached to fraud UVD/device ring — early pass denied via related/combined
+    for i in range(3):
+        uid = f"UNR{i}"
+        did, vid, dev = "DF0", "VF0", f"DEVF{i%2}"
+        add_user(uid, base + timedelta(days=24))
+        device_rows.append(
+            {
+                "user_id": uid,
+                "device_id": dev,
+                "cluster_id": "CFARM",
+                "last_seen_ts": (base + timedelta(days=26)).isoformat(),
+            }
+        )
+        for j in range(2):
+            ts = base + timedelta(days=25 + j, hours=i)
+            history_rows.append(
+                {
+                    "order_id": f"H-NEWRING-{i}-{j}",
+                    "user_id": uid,
+                    "driver_id": did,
+                    "vendor_id": vid,
+                    "device_id": dev,
+                    "market": "SG",
+                    "vertical": "food",
+                    "amount": 30,
+                    "is_refund": 1 if j == 1 else 0,
+                    "event_ts": ts.isoformat(),
+                    "status": "delivered",
+                    "claim_reason": "missing_item" if j == 1 else "",
+                }
+            )
+        order_rows.append(
+            {
+                "order_id": f"O-NEWRING-{i}",
+                "user_id": uid,
+                "driver_id": did,
+                "vendor_id": vid,
+                "device_id": dev,
+                "market": "SG",
+                "vertical": "food",
+                "amount": 30,
+                "status": "delivered",
+                "claim_reason": "missing_item",
+                "event_ts": (base + timedelta(days=27, hours=i)).isoformat(),
+                "abuse_label": 1,
+                "abuse_label_weak": 1,
+                "fraud_label": 0,
+                "fraud_label_source": "",
+                "strong_fraud_label": 0,
+                "weak_policy_negative": 0,
+            }
+        )
+
+    # Early-life LTV burn — new account, almost all GMV refunded → hard gate
+    for i in range(4):
+        uid, did, vid, dev = f"UB{i}", f"D{i%5}", f"V{i%4}", f"DEVB{i}"
+        add_user(uid, base + timedelta(days=22))
+        device_rows.append(
+            {
+                "user_id": uid,
+                "device_id": dev,
+                "cluster_id": f"CB{i}",
+                "last_seen_ts": (base + timedelta(days=25)).isoformat(),
+            }
+        )
+        for j in range(3):
+            ts = base + timedelta(days=23 + j, hours=i)
+            history_rows.append(
+                {
+                    "order_id": f"H-BURN-{i}-{j}",
+                    "user_id": uid,
+                    "driver_id": did,
+                    "vendor_id": vid,
+                    "device_id": dev,
+                    "market": "SG",
+                    "vertical": "food",
+                    "amount": 40,
+                    "is_refund": 1,
+                    "event_ts": ts.isoformat(),
+                    "status": "delivered",
+                    "claim_reason": "missing_item",
+                }
+            )
+        order_rows.append(
+            {
+                "order_id": f"O-BURN-{i}",
+                "user_id": uid,
+                "driver_id": did,
+                "vendor_id": vid,
+                "device_id": dev,
+                "market": "SG",
+                "vertical": "food",
+                "amount": 40,
+                "status": "delivered",
+                "claim_reason": "missing_item",
+                "event_ts": (base + timedelta(days=27, hours=i)).isoformat(),
+                "abuse_label": 1,
+                "abuse_label_weak": 0,
+                "fraud_label": 0,
+                "fraud_label_source": "",
+                "strong_fraud_label": 0,
+                "weak_policy_negative": 0,
+            }
+        )
+
     pd.DataFrame(history_rows).to_csv(DATA / "history.csv", index=False)
     pd.DataFrame(order_rows).to_csv(DATA / "orders.csv", index=False)
     pd.DataFrame(device_rows).to_csv(DATA / "devices.csv", index=False)
-    print(f"Wrote {len(history_rows)} history, {len(order_rows)} orders, {len(device_rows)} devices to {DATA}")
+    pd.DataFrame(user_rows).to_csv(DATA / "users.csv", index=False)
+    print(
+        f"Wrote {len(history_rows)} history, {len(order_rows)} orders, "
+        f"{len(device_rows)} devices, {len(user_rows)} users to {DATA}"
+    )
 
 
 if __name__ == "__main__":

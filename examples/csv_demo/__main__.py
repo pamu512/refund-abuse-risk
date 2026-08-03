@@ -29,16 +29,17 @@ def main() -> None:
     orders = pd.read_csv(DATA / "orders.csv")
     history = pd.read_csv(DATA / "history.csv")
     devices = pd.read_csv(DATA / "devices.csv")
+    users = pd.read_csv(DATA / "users.csv") if (DATA / "users.csv").exists() else None
 
-    model = train_two_head(orders, history, devices)
+    model = train_two_head(orders, history, devices, users=users)
     model_path = ROOT / "models" / "two_head.joblib"
     model.save(model_path)
 
-    cache = precompute_orders(orders, history, devices, model)
+    cache = precompute_orders(orders, history, devices, model, users=users)
 
     # Lifecycle refresh on one order.
     sample = orders.iloc[0].to_dict()
-    refresh_order(sample, history, devices, model, cache, event=LifecycleEvent.DELIVERED)
+    refresh_order(sample, history, devices, model, cache, users=users, event=LifecycleEvent.DELIVERED)
 
     # Risk-change rescoring for fraud ring driver.
     key = link_key("driver", "DF0")
@@ -50,11 +51,12 @@ def main() -> None:
         model,
         cache,
         new_scores={key: 95.0},
+        users=users,
     )
 
     # Sync claim-path reads.
     payloads = []
-    for order_id in ["O-CLEAN-0", "O-ABUSE-0", "O-FRAUD-0", "O-PROXY-0"]:
+    for order_id in ["O-CLEAN-0", "O-NEW-0", "O-NEWRING-0", "O-BURN-0", "O-ABUSE-0", "O-FRAUD-0"]:
         snap = claim_path_read(order_id, cache)
         payloads.append(snap.model_dump(mode="json"))
 

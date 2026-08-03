@@ -29,7 +29,7 @@ def test_strong_fraud_hard_gate():
     assert tier == SuggestedTier.AUTO_DENY
 
 
-def test_user_refund_cap_hard_gate():
+def test_behavioral_signals_are_not_hard_gates():
     hard, items = evaluate_hard_gates(
         {
             "user_id": "U_ABUSE",
@@ -37,51 +37,22 @@ def test_user_refund_cap_hard_gate():
             "vendor_id": "V",
             "device_id": "DEV",
             "strong_fraud_label": 0,
+            "user_days_since_signup": 60,
+            "user_lifetime_orders": 20,
+            "user_lifetime_refund_count": 9,
+            "user_refund_to_ltv_ratio": 0.9,
+            "user_orders_30d": 15,
             "user_refund_count_7d": 9,
             "user_refund_count_30d": 20,
             "user_refund_rate_30d": 0.5,
             "user_refund_gmv_pct_30d": 0.5,
-            "driver_refund_count_30d": 0,
-            "driver_refund_rate_30d": 0,
-            "vendor_refund_count_30d": 0,
-            "vendor_refund_rate_30d": 0,
-            "vendor_refund_gmv_pct_30d": 0,
         },
         entity_scores={"user": 70, "driver": 0, "vendor": 0},
-        link_scores={"ud": 0, "uv": 0, "vd": 0, "uvd": 0},
-        device_cluster_score=10,
-        policy=load_policy(),
-        market="SG",
-        vertical="food",
-    )
-    assert hard is True
-    assert any(i.reason_code == "USER_REFUND_COUNT_7D" for i in items)
-
-
-def test_uvd_link_hard_gate():
-    hard, items = evaluate_hard_gates(
-        {
-            "user_id": "U",
-            "driver_id": "D",
-            "vendor_id": "V",
-            "device_id": "DEV",
-            "strong_fraud_label": 0,
-            "user_refund_count_7d": 0,
-            "user_refund_count_30d": 0,
-            "user_refund_rate_30d": 0,
-            "user_refund_gmv_pct_30d": 0,
-            "driver_refund_count_30d": 0,
-            "driver_refund_rate_30d": 0,
-            "vendor_refund_count_30d": 0,
-            "vendor_refund_rate_30d": 0,
-            "vendor_refund_gmv_pct_30d": 0,
-        },
-        entity_scores={"user": 0, "driver": 0, "vendor": 0},
         link_scores={"ud": 0, "uv": 0, "vd": 0, "uvd": 90},
-        device_cluster_score=10,
+        device_cluster_score=85,
         policy=load_policy(),
         market="SG",
         vertical="food",
     )
-    assert hard is True
-    assert any(i.reason_code == "LINK_UVD_HARD" for i in items)
+    assert hard is False
+    assert items == []

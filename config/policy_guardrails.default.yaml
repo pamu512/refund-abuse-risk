@@ -1,0 +1,22 @@
+# Absolute bounds for tunable head thresholds (score points 0-100).
+# Outside these → reject (not HIL — hard safety).
+bounds:
+  head_thresholds.abuse_soft_friction: {min: 10, max: 90}
+  head_thresholds.fraud_soft_friction: {min: 10, max: 90}
+  head_thresholds.abuse_hold_review: {min: 20, max: 95}
+  head_thresholds.fraud_hold_review: {min: 20, max: 95}
+  head_thresholds.abuse_auto_deny: {min: 40, max: 99}
+  head_thresholds.fraud_auto_deny: {min: 40, max: 99}
+  head_thresholds.target_pattern_recall: {min: 0.80, max: 0.99}
+
+# Auto-apply vs human-in-the-loop (HIL).
+# ML may step toward a proposal by at most max_abs_delta per key per cycle.
+# Remaining gap → pending HIL approval before full target is written.
+auto_apply:
+  max_abs_delta: 5.0
+  max_abs_delta_by_key:
+    abuse_auto_deny: 3.0
+    fraud_auto_deny: 3.0
+  cooldown_minutes: 60
+  # Require at least this holdout pattern-recall lift to auto-step (else suggest only).
+  min_pattern_recall_lift: 0.0

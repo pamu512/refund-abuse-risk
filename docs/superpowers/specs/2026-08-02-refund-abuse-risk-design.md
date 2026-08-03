@@ -1,7 +1,7 @@
 # Refund Abuse / Fraud Risk — Design
 
 Date: 2026-08-02  
-Status: implemented (v0.1)
+Status: implemented (v0.2 — head-specific features, PIT aggregations, score blend)
 
 ## Problem
 
