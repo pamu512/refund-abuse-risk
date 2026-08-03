@@ -10,6 +10,12 @@ min_refund_rate: 0.25
 # Node score = max incident elevated edge score.
 node_score: max_edge
 
+# Edge-shuffle null: keep elevated only if anomaly > null percentile (X4 honesty).
+null_baseline:
+  enabled: true
+  n_shuffles: 3
+  percentile: 95.0
+
 warehouse:
   edge_table: bipartite_uv_edges
   node_table: bipartite_uv_nodes

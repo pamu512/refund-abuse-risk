@@ -40,9 +40,11 @@ def _holdout_scores() -> tuple[object, object, object, object]:
     users = pd.read_csv(DATA / "users.csv") if (DATA / "users.csv").exists() else None
     label_weights = load_label_weights()
 
-    mask = orders["order_id"].astype(str).str.len() % 2 == 0
-    train_orders = orders.loc[mask].reset_index(drop=True)
-    test_orders = orders.loc[~mask].reset_index(drop=True)
+    from refund_abuse_risk.training.splits import time_based_order_split
+
+    train_orders, test_orders, _split = time_based_order_split(
+        orders, holdout_days=7.0, min_train=10, min_test=5
+    )
     if train_orders.empty or test_orders.empty:
         train_orders = orders.iloc[: max(len(orders) // 2, 1)].reset_index(drop=True)
         test_orders = orders.iloc[len(train_orders) :].reset_index(drop=True)

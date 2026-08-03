@@ -1,0 +1,23 @@
+# Per-head HistGBM + calibration (roadmap: separate head configs).
+# ponytail: fixed configs beat a tiny random search on synthetic data; swap via this file.
+abuse:
+  max_depth: 3
+  learning_rate: 0.08
+  max_iter: 100
+  min_samples_leaf: 8
+  l2_regularization: 1.5
+  calibrate_method: sigmoid
+  cv: 3
+fraud:
+  max_depth: 5
+  learning_rate: 0.06
+  max_iter: 140
+  min_samples_leaf: 5
+  l2_regularization: 1.0
+  calibrate_method: sigmoid
+  cv: 3
+# Optional joint decision calibration per market×vertical after the stacker.
+slice_calibrator:
+  enabled: true
+  min_slice_n: 40
+  min_slice_positives: 5

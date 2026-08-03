@@ -583,4 +583,20 @@ def apply_precision_discount_to_operating_point(
             0.5, float(thr["target_pattern_recall"]) - max(abuse_disc, fraud_disc)
         )
     op["head_thresholds"] = thr
+
+    # Joint decision ladder (decision_primary): warp by max head relax/tighten.
+    dthr = dict(op.get("decision_thresholds") or {})
+    if dthr:
+        relax = max(abuse_relax, fraud_relax)
+        tighten = max(abuse_tighten, fraud_tighten)
+        for key in ("soft_friction", "hold_review", "auto_deny"):
+            if key not in dthr:
+                continue
+            val = float(dthr[key])
+            if relax > 0:
+                val = max(0.0, val - relax)
+            if tighten > 0:
+                val = min(100.0, val + tighten)
+            dthr[key] = val
+        op["decision_thresholds"] = dthr
     return op

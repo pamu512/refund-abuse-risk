@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import yaml
@@ -18,6 +19,17 @@ from refund_abuse_risk.control_plane.tuner import run_threshold_tuner
 from refund_abuse_risk.features.builders import build_order_feature_frame
 from refund_abuse_risk.model.two_head import apply_proxy_fraud_labels
 from refund_abuse_risk.pipeline.score import precompute_orders, train_two_head
+from refund_abuse_risk.training.splits import time_based_order_split
+from refund_abuse_risk.scoring.decision import (
+    recommend_decision_thresholds,
+    recommend_decision_thresholds_by_slice,
+)
+from refund_abuse_risk.scoring.monitoring import (
+    evaluate_monitoring_gates,
+    expected_calibration_error,
+    population_stability_index,
+    summarize_ops_metrics,
+)
 from refund_abuse_risk.scoring.thresholds import (
     pattern_flag_recall,
     precision_at_threshold,
@@ -64,6 +76,12 @@ def main() -> None:
         default=None,
         help="Pattern recall target for --tune (default: from operating_point)",
     )
+    parser.add_argument(
+        "--oot-days",
+        type=float,
+        default=7.0,
+        help="Primary holdout: last N days by event_ts (adaptive if span is shorter)",
+    )
     args = parser.parse_args()
 
     if not (DATA / "orders.csv").exists():
@@ -84,13 +102,13 @@ def main() -> None:
         else thr.get("target_pattern_recall", 0.98)
     )
 
-    # Simple holdout by order_id suffix hash.
-    mask = orders["order_id"].astype(str).str.len() % 2 == 0
-    train_orders = orders.loc[mask].reset_index(drop=True)
-    test_orders = orders.loc[~mask].reset_index(drop=True)
+    train_orders, test_orders, split_stats = time_based_order_split(
+        orders, holdout_days=float(args.oot_days), min_train=10, min_test=5
+    )
     if train_orders.empty or test_orders.empty:
         train_orders = orders.iloc[: max(len(orders) // 2, 1)].reset_index(drop=True)
         test_orders = orders.iloc[len(train_orders) :].reset_index(drop=True)
+        split_stats = {**split_stats, "ok": False, "mode": "positional_fallback"}
 
     model = train_two_head(train_orders, history, devices, users=users, label_weights=label_weights)
     feat = build_order_feature_frame(test_orders, history, devices, users=users)
@@ -99,24 +117,108 @@ def main() -> None:
 
     abuse_y = scored["abuse_label"].astype(int).to_numpy()
     fraud_y = scored["fraud_label"].astype(int).to_numpy()
-    abuse_s = (scored["abuse_score"] / 1.0).to_numpy()
-    fraud_s = (scored["fraud_score"] / 1.0).to_numpy()
+    abuse_s = scored["abuse_score"].to_numpy(dtype=float)
+    fraud_s = scored["fraud_score"].to_numpy(dtype=float)
+    decision_s = scored["decision_score"].to_numpy(dtype=float)
+    pattern_y = ((abuse_y >= 1) | (fraud_y >= 1)).astype(int)
 
-    recommended = recommend_head_thresholds(
-        abuse_y, abuse_s, fraud_y, fraud_s, target_recall=target_recall
+    min_prec = thr.get("min_precision_at_soft", 0.15)
+    max_fp = thr.get("max_fp_rate_at_soft")
+    max_fp_dollars = thr.get("max_fp_refund_dollars_mean")
+    amounts = (
+        scored["amount"].astype(float).to_numpy()
+        if "amount" in scored.columns
+        else None
+    )
+    recommended_heads = recommend_head_thresholds(
+        abuse_y,
+        abuse_s,
+        fraud_y,
+        fraud_s,
+        target_recall=target_recall,
+        min_precision_at_soft=float(min_prec) if min_prec is not None else None,
+        max_fp_rate_at_soft=float(max_fp) if max_fp is not None else None,
+        apply_floors=False,
+    )
+    recommended_decision = recommend_decision_thresholds(
+        pattern_y,
+        decision_s,
+        target_recall=target_recall,
+        min_precision_at_soft=float(min_prec) if min_prec is not None else None,
+        max_fp_rate_at_soft=float(max_fp) if max_fp is not None else None,
+        amounts=amounts,
+        max_fp_refund_dollars_mean=(
+            float(max_fp_dollars) if max_fp_dollars is not None else None
+        ),
+        apply_floors=False,
+    )
+    recommended = recommended_decision  # primary promote signal
+    slice_frame = scored.copy()
+    slice_frame["pattern_y"] = pattern_y
+    recommended_by_slice = recommend_decision_thresholds_by_slice(
+        slice_frame,
+        target_recall=target_recall,
+        min_precision_at_soft=float(min_prec) if min_prec is not None else None,
+        max_fp_rate_at_soft=float(max_fp) if max_fp is not None else None,
+        max_fp_refund_dollars_mean=(
+            float(max_fp_dollars) if max_fp_dollars is not None else None
+        ),
+        min_slice_n=20,
+        min_slice_positives=3,
     )
 
-    soft_a = float(thr.get("abuse_soft_friction", recommended["abuse_soft_friction"]))
-    soft_f = float(thr.get("fraud_soft_friction", recommended["fraud_soft_friction"]))
-    hold_a = float(thr.get("abuse_hold_review", recommended["abuse_hold_review"]))
-    hold_f = float(thr.get("fraud_hold_review", recommended["fraud_hold_review"]))
-    deny_a = float(thr.get("abuse_auto_deny", recommended["abuse_auto_deny"]))
-    deny_f = float(thr.get("fraud_auto_deny", recommended["fraud_auto_deny"]))
+    dthr = operating_point.get("decision_thresholds") or {}
+    soft_d = float(dthr.get("soft_friction", recommended_decision["soft_friction"]))
+    hold_d = float(dthr.get("hold_review", recommended_decision["hold_review"]))
+    deny_d = float(dthr.get("auto_deny", recommended_decision["auto_deny"]))
+
+    soft_a = float(thr.get("abuse_soft_friction", recommended_heads["abuse_soft_friction"]))
+    soft_f = float(thr.get("fraud_soft_friction", recommended_heads["fraud_soft_friction"]))
+    hold_a = float(thr.get("abuse_hold_review", recommended_heads["abuse_hold_review"]))
+    hold_f = float(thr.get("fraud_hold_review", recommended_heads["fraud_hold_review"]))
+    deny_a = float(thr.get("abuse_auto_deny", recommended_heads["abuse_auto_deny"]))
+    deny_f = float(thr.get("fraud_auto_deny", recommended_heads["fraud_auto_deny"]))
+
+    # Primary truth: proven fraud only (proxy metrics are secondary).
+    proven_mask = scored["fraud_label_source"].astype(str).str.lower().eq("proven")
+    fraud_proven_y = proven_mask.astype(int).to_numpy()
 
     metrics = {
         "n_train": int(len(train_orders)),
         "n_test": int(len(test_orders)),
+        "split": split_stats,
+        "primary_holdout": "time_oot",
         "decision_mode": operating_point.get("decision_mode"),
+        "honesty": {
+            "recommended_ok": recommended.get("ok"),
+            "cost_feasible": recommended.get("cost_feasible"),
+            "floor_would_bind": recommended.get("floor_would_bind"),
+            "exclude_proxy_mint_features": bool(
+                (label_weights.get("proxy_rules") or {}).get(
+                    "exclude_mint_features_from_fraud_head", True
+                )
+            ),
+            "primary_fraud_metric": "proven_only",
+            "primary_decision_metric": "pattern_on_decision_score",
+            "primary_holdout": "time_oot",
+            "stacker_fit_mode": getattr(model.decision_stacker, "fit_mode", None),
+        },
+        "decision": {
+            "roc_auc": _safe_auc(pattern_y.tolist(), (decision_s / 100.0).tolist()),
+            "average_precision": _safe_ap(pattern_y.tolist(), (decision_s / 100.0).tolist()),
+            "positive_rate": float(pattern_y.mean()) if len(pattern_y) else 0.0,
+            "recall_at_soft": recall_at_threshold(pattern_y, decision_s, soft_d),
+            "precision_at_soft": precision_at_threshold(pattern_y, decision_s, soft_d),
+            "recall_at_hold": recall_at_threshold(pattern_y, decision_s, hold_d),
+            "recall_at_deny": recall_at_threshold(pattern_y, decision_s, deny_d),
+            "current_thresholds": {
+                "soft_friction": soft_d,
+                "hold_review": hold_d,
+                "auto_deny": deny_d,
+            },
+            "recommended_thresholds": recommended_decision,
+            "recommended_thresholds_by_slice": recommended_by_slice,
+        },
         "abuse": {
             "roc_auc": _safe_auc(abuse_y.tolist(), (abuse_s / 100.0).tolist()),
             "average_precision": _safe_ap(abuse_y.tolist(), (abuse_s / 100.0).tolist()),
@@ -125,6 +227,14 @@ def main() -> None:
             "precision_at_soft": precision_at_threshold(abuse_y, abuse_s, soft_a),
             "recall_at_hold": recall_at_threshold(abuse_y, abuse_s, hold_a),
             "recall_at_deny": recall_at_threshold(abuse_y, abuse_s, deny_a),
+        },
+        "fraud_proven_only": {
+            "roc_auc": _safe_auc(fraud_proven_y.tolist(), (fraud_s / 100.0).tolist()),
+            "average_precision": _safe_ap(fraud_proven_y.tolist(), (fraud_s / 100.0).tolist()),
+            "positive_rate": float(fraud_proven_y.mean()) if len(fraud_proven_y) else 0.0,
+            "n_positives": int(fraud_proven_y.sum()),
+            "recall_at_soft": recall_at_threshold(fraud_proven_y, fraud_s, soft_f),
+            "precision_at_soft": precision_at_threshold(fraud_proven_y, fraud_s, soft_f),
         },
         "fraud_all": {
             "roc_auc": _safe_auc(fraud_y.tolist(), (fraud_s / 100.0).tolist()),
@@ -137,13 +247,14 @@ def main() -> None:
         },
         "pattern_detection": {
             "target_recall": target_recall,
+            "min_precision_at_soft": min_prec,
             "recall_at_soft_or": pattern_flag_recall(
                 abuse_y, fraud_y, abuse_s, fraud_s, soft_a, soft_f
             ),
             "recall_at_hold_or": pattern_flag_recall(
                 abuse_y, fraud_y, abuse_s, fraud_s, hold_a, hold_f
             ),
-            "current_thresholds": {
+            "current_head_thresholds": {
                 "abuse_soft_friction": soft_a,
                 "fraud_soft_friction": soft_f,
                 "abuse_hold_review": hold_a,
@@ -151,11 +262,46 @@ def main() -> None:
                 "abuse_auto_deny": deny_a,
                 "fraud_auto_deny": deny_f,
             },
-            "recommended_thresholds": recommended,
+            "recommended_head_thresholds": recommended_heads,
         },
     }
 
-    for source in ("proven", "proxy"):
+    # OOT slices by market × vertical (decision score).
+    slice_metrics: dict[str, Any] = {}
+    for (market, vertical), grp in scored.groupby(
+        [scored["market"].astype(str), scored["vertical"].astype(str)], sort=True
+    ):
+        py = (
+            (grp["abuse_label"].astype(int) >= 1) | (grp["fraud_label"].astype(int) >= 1)
+        ).astype(int)
+        ds = grp["decision_score"].astype(float)
+        key = f"{market}|{vertical}"
+        slice_metrics[key] = {
+            "n": int(len(grp)),
+            "positive_rate": float(py.mean()) if len(py) else 0.0,
+            "roc_auc": _safe_auc(py.tolist(), (ds / 100.0).tolist()),
+            "average_precision": _safe_ap(py.tolist(), (ds / 100.0).tolist()),
+            "recall_at_soft": recall_at_threshold(py.to_numpy(), ds.to_numpy(), soft_d),
+            "precision_at_soft": precision_at_threshold(py.to_numpy(), ds.to_numpy(), soft_d),
+        }
+    metrics["slices"] = slice_metrics
+
+    # Calibration / drift (train scores vs holdout) — ECE on decision, PSI train→test.
+    # Ops gates finalized after dual-run effects below.
+    train_feat = build_order_feature_frame(train_orders, history, devices, users=users)
+    train_feat = apply_proxy_fraud_labels(train_feat, label_weights)
+    train_scored = model.predict_proba(train_feat)
+    train_decision = train_scored["decision_score"].to_numpy(dtype=float)
+    decision_ece = expected_calibration_error(pattern_y, decision_s)
+    psi = population_stability_index(train_decision, decision_s)
+    metrics["monitoring"] = {
+        "decision_ece": decision_ece,
+        "decision_psi_train_vs_test": psi,
+        "abuse_ece": expected_calibration_error(abuse_y, abuse_s),
+        "fraud_ece": expected_calibration_error(fraud_y, fraud_s),
+    }
+
+    for source in ("proven", "proxy", "discovery"):
         src_mask = scored["fraud_label_source"].astype(str).str.lower().eq(source)
         neg_mask = scored["fraud_label"].astype(int).eq(0)
         slice_df = scored.loc[src_mask | neg_mask]
@@ -179,22 +325,110 @@ def main() -> None:
     )
     tier_counts: dict[str, int] = {}
     hard_gate_count = 0
+    base_effects: dict[str, int] = {}
+    final_effects: dict[str, int] = {}
+    shadow_effects: dict[str, int] = {}
+    live_overrides = 0
+    shadow_overrides = 0
+    budget_floors = 0
+    row_amounts: list[float] = []
+    row_final_effects: list[str] = []
+    shadow_hits = 0
+    shadow_true = 0
     for snap in cache.all_snapshots():
         tier_counts[snap.suggested_tier.value] = tier_counts.get(snap.suggested_tier.value, 0) + 1
         hard_gate_count += int(snap.hard_gated)
+        ed = snap.effect_decision or {}
+        base = str(ed.get("base_effect") or snap.refund_effect.value)
+        final = str(ed.get("final_effect") or snap.refund_effect.value)
+        base_effects[base] = base_effects.get(base, 0) + 1
+        final_effects[final] = final_effects.get(final, 0) + 1
+        row_final_effects.append(final)
+        amt = getattr(snap, "amount", None)
+        if amt is None and hasattr(snap, "features"):
+            amt = (snap.features or {}).get("order_amount")
+        row_amounts.append(float(amt or 0.0))
+        if ed.get("matched_mode") == "live":
+            live_overrides += 1
+        if ed.get("matched_mode") == "shadow" and ed.get("shadow_effect"):
+            shadow_overrides += 1
+            sh = str(ed["shadow_effect"])
+            shadow_effects[sh] = shadow_effects.get(sh, 0) + 1
+            # Precision of shadow overrides vs pattern labels (roadmap §4).
+            shadow_hits += 1
+            oid = str(getattr(snap, "order_id", "") or "")
+            if oid and oid in scored["order_id"].astype(str).to_numpy():
+                row = scored.loc[scored["order_id"].astype(str) == oid].iloc[0]
+                if int(row.get("abuse_label", 0) or 0) >= 1 or int(row.get("fraud_label", 0) or 0) >= 1:
+                    shadow_true += 1
+        if ed.get("budget_floored") or (snap.refund_budget or {}).get("floored"):
+            budget_floors += 1
     metrics["tiers"] = tier_counts
     metrics["hard_gated"] = hard_gate_count
+    metrics["effects_dual_run"] = {
+        "n": int(len(cache.all_snapshots())),
+        "base_effect_counts": base_effects,
+        "final_effect_counts": final_effects,
+        "shadow_effect_counts": shadow_effects,
+        "live_override_count": live_overrides,
+        "shadow_override_count": shadow_overrides,
+        "budget_floor_count": budget_floors,
+        "shadow_override_precision": (
+            float(shadow_true / shadow_hits) if shadow_hits else None
+        ),
+        "shadow_override_labeled_n": int(shadow_hits),
+    }
+    # Prefer order amounts from scored holdout when snap amount is missing.
+    if "amount" in scored.columns and len(scored) == len(row_amounts):
+        row_amounts = scored["amount"].astype(float).fillna(0.0).tolist()
+    ops = summarize_ops_metrics(
+        tier_counts=tier_counts,
+        effects_dual_run=metrics["effects_dual_run"],
+        amounts=row_amounts,
+        final_effects=row_final_effects,
+    )
+    monitoring_cfg = dict(operating_point.get("monitoring") or {})
+    # Live ops feed: data/ops_snapshot.json from scripts/ingest_ops_snapshot.py
+    ops_sidecar = ROOT / "data" / "ops_snapshot.json"
+    if ops_sidecar.exists():
+        from refund_abuse_risk.integrations.ops_ingest import (
+            load_ops_snapshot_file,
+            merge_ops_snapshot,
+        )
+
+        monitoring_cfg = merge_ops_snapshot(monitoring_cfg, load_ops_snapshot_file(ops_sidecar))
+        metrics["monitoring"]["ops_sidecar"] = str(ops_sidecar)
+    mon_gate = evaluate_monitoring_gates(
+        decision_ece=decision_ece.get("ece"),
+        psi_train_test=psi.get("psi"),
+        monitoring_cfg=monitoring_cfg,
+        ops_metrics=ops,
+    )
+    metrics["monitoring"]["ops"] = ops
+    metrics["monitoring"]["gate"] = mon_gate
+    metrics["monitoring"]["ok"] = bool(mon_gate.get("ok", True))
+    metrics["honesty"]["monitoring_ok"] = bool(mon_gate.get("ok", True))
+    metrics["honesty"]["promote_ok"] = bool(
+        recommended.get("ok") and mon_gate.get("ok", True)
+    )
+    metrics["honesty"]["ops_gate"] = True
 
     if args.tune:
+        decision_proposal = {
+            "soft_friction": round(float(recommended_decision["soft_friction"]), 2),
+            "hold_review": round(float(recommended_decision["hold_review"]), 2),
+            "auto_deny": round(float(recommended_decision["auto_deny"]), 2),
+        }
         head = {
             "target_pattern_recall": target_recall,
-            "abuse_soft_friction": round(float(recommended["abuse_soft_friction"]), 2),
-            "fraud_soft_friction": round(float(recommended["fraud_soft_friction"]), 2),
-            "abuse_hold_review": round(float(recommended["abuse_hold_review"]), 2),
-            "fraud_hold_review": round(float(recommended["fraud_hold_review"]), 2),
-            "abuse_auto_deny": round(float(recommended["abuse_auto_deny"]), 2),
-            "fraud_auto_deny": round(float(recommended["fraud_auto_deny"]), 2),
+            "abuse_soft_friction": round(float(recommended_heads["abuse_soft_friction"]), 2),
+            "fraud_soft_friction": round(float(recommended_heads["fraud_soft_friction"]), 2),
+            "abuse_hold_review": round(float(recommended_heads["abuse_hold_review"]), 2),
+            "fraud_hold_review": round(float(recommended_heads["fraud_hold_review"]), 2),
+            "abuse_auto_deny": round(float(recommended_heads["abuse_auto_deny"]), 2),
+            "fraud_auto_deny": round(float(recommended_heads["fraud_auto_deny"]), 2),
         }
+        # Head tuner still HIL-gates legacy head knobs; decision ladder written to tuned yaml.
         decision = run_threshold_tuner(
             current_thresholds=dict(thr),
             abuse_y=abuse_y,
@@ -205,24 +439,65 @@ def main() -> None:
             audit=PolicyAuditLog(CONTROL_DB),
             hil_store=HilProposalStore(CONTROL_DB),
             operating_point_path=OP_PATH,
-            apply=bool(args.write_config),
+            apply=bool(args.write_config) and bool(recommended_heads.get("ok")),
         )
+        if (
+            args.write_config
+            and recommended_decision.get("ok")
+            and mon_gate.get("ok", True)
+        ):
+            op_live = yaml.safe_load(OP_PATH.read_text(encoding="utf-8")) or {}
+            op_live["decision_thresholds"] = decision_proposal
+            overlays = []
+            for _key, rec in recommended_by_slice.items():
+                if not rec.get("promote_eligible", rec.get("ok")) or rec.get("thin_slice"):
+                    continue
+                overlays.append(
+                    {
+                        "market": rec["market"],
+                        "vertical": rec["vertical"],
+                        "soft_friction": round(float(rec["soft_friction"]), 2),
+                        "hold_review": round(float(rec["hold_review"]), 2),
+                        "auto_deny": round(float(rec["auto_deny"]), 2),
+                    }
+                )
+            op_live["decision_threshold_overlays"] = overlays
+            OP_PATH.write_text(
+                yaml.safe_dump(op_live, sort_keys=False, default_flow_style=False),
+                encoding="utf-8",
+            )
         tuned_path = ROOT / "examples" / "csv_demo" / "tuned_thresholds.yaml"
         tuned_path.parent.mkdir(parents=True, exist_ok=True)
         tuned_path.write_text(
             yaml.safe_dump(
                 {
+                    "decision_thresholds": decision_proposal,
+                    "decision_threshold_overlays": [
+                        {
+                            "market": rec["market"],
+                            "vertical": rec["vertical"],
+                            "soft_friction": round(float(rec["soft_friction"]), 2),
+                            "hold_review": round(float(rec["hold_review"]), 2),
+                            "auto_deny": round(float(rec["auto_deny"]), 2),
+                            "ok": bool(rec.get("ok")),
+                            "thin_slice": bool(rec.get("thin_slice")),
+                            "n": rec.get("n"),
+                        }
+                        for rec in recommended_by_slice.values()
+                    ],
                     "head_thresholds": head,
                     "notes": (
-                        "Full ML proposal from holdout. Auto-apply only steps within "
-                        "policy_guardrails.auto_apply.max_abs_delta; remainder needs HIL "
-                        "(scripts/run_tuner.py --approve <id>)."
+                        "decision_thresholds are primary under decision_primary. "
+                        "Overlays apply per market×vertical (first match). "
+                        "Head knobs remain for evidence/baseline under_threshold. "
+                        "Promote requires recommended.ok + monitoring.ok."
                     ),
                     "tuner_decision": decision.to_dict(),
                     "metrics_snapshot": {
-                        "pattern_recall_at_soft": recommended.get("pattern_recall_at_soft"),
-                        "abuse_precision_at_soft": recommended.get("abuse_precision_at_soft"),
-                        "fraud_precision_at_soft": recommended.get("fraud_precision_at_soft"),
+                        "decision_recall_at_soft": recommended_decision.get("recall_at_soft"),
+                        "decision_precision_at_soft": recommended_decision.get("precision_at_soft"),
+                        "decision_ok": recommended_decision.get("ok"),
+                        "stacker_fit_mode": getattr(model.decision_stacker, "fit_mode", None),
                     },
                 },
                 sort_keys=False,
@@ -231,11 +506,24 @@ def main() -> None:
             encoding="utf-8",
         )
         metrics["tuned_wrote"] = str(tuned_path)
-        metrics["tuned_thresholds"] = head
+        metrics["tuned_decision_thresholds"] = decision_proposal
+        metrics["tuned_head_thresholds"] = head
         metrics["tuner_decision"] = decision.to_dict()
         if args.write_config:
-            metrics["promoted_to"] = str(OP_PATH)
-            metrics["hil_pending"] = decision.proposal_id
+            promote_ok = bool(recommended_decision.get("ok", False) and mon_gate.get("ok", True))
+            if not promote_ok:
+                metrics["promoted_to"] = None
+                reasons = []
+                if not recommended_decision.get("ok", False):
+                    reasons.append(
+                        "decision recommended.ok is false (cost infeasible or soft floor would bind)"
+                    )
+                if not mon_gate.get("ok", True):
+                    reasons.extend(mon_gate.get("reasons") or ["monitoring gate failed"])
+                metrics["promote_blocked"] = "; ".join(reasons)
+            else:
+                metrics["promoted_to"] = str(OP_PATH)
+                metrics["hil_pending"] = decision.proposal_id
 
     out = ROOT / "examples" / "csv_demo" / "backtest_metrics.json"
     out.parent.mkdir(parents=True, exist_ok=True)

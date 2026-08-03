@@ -13,6 +13,7 @@ from refund_abuse_risk.schemas.models import (
     RefundEffect,
     SuggestedTier,
 )
+from refund_abuse_risk.scoring.decision import tier_from_decision_score
 
 _TIER_TO_REFUND_EFFECT: dict[SuggestedTier, RefundEffect] = {
     SuggestedTier.AUTO_APPROVE: RefundEffect.REFUND_AUTO_GRANT,
@@ -93,11 +94,13 @@ def evaluate_hard_gates(
     gates = resolved.get("hard_gates") or {}
     items: list[EvidenceItem] = []
 
-    if gates.get("strong_fraud_label", True) and float(features.get("strong_fraud_label", 0) or 0) >= 1:
+    # prior_strong_fraud = account/entity flag from prior dispositions (not same-order label).
+    prior_fraud = float(features.get("prior_strong_fraud", 0) or 0) >= 1
+    if gates.get("strong_fraud_label", True) and prior_fraud:
         items.append(
             EvidenceItem(
                 reason_code="STRONG_FRAUD_LABEL",
-                metric="strong_fraud_label",
+                metric="prior_strong_fraud",
                 value=True,
                 threshold=True,
                 entity_ids={"user_id": str(features.get("user_id", ""))},
@@ -203,30 +206,36 @@ def combine_scores(
     operating_point: dict[str, Any],
     *,
     hard_gated: bool,
+    decision_score: float | None = None,
+    market: str = "",
+    vertical: str = "",
 ) -> tuple[float, SuggestedTier]:
     """
-    Learning-primary decision: tier from head thresholds; display score from heads.
-
-    entity_prior is retained for evidence/monitoring only — it does not band or
-    override calibrated head probabilities.
+    Decision-primary: tier from joint decision_score ladder.
+    Heads remain explainers; entity_prior is monitoring only.
     """
     _ = entity_prior
     abuse = float(abuse_score)
     fraud = float(fraud_score)
+    d_score = float(decision_score) if decision_score is not None else float(max(abuse, fraud))
     display_cfg = operating_point.get("score_display") or {}
     w_abuse = float(display_cfg.get("abuse", 0.5))
     w_fraud = float(display_cfg.get("fraud", 0.5))
     total = w_abuse + w_fraud
     if total <= 0:
         w_abuse, w_fraud, total = 0.5, 0.5, 1.0
-    # Keep max floor so one extreme head remains visible in the display score.
     blended = (w_abuse * abuse + w_fraud * fraud) / total
-    combined = float(np.clip(max(blended, max(abuse, fraud)), 0.0, 100.0))
+    # Display prefers joint decision score when present.
+    combined = float(np.clip(max(d_score, blended), 0.0, 100.0))
 
     if hard_gated:
         return max(combined, 90.0), SuggestedTier.AUTO_DENY
 
-    mode = str(operating_point.get("decision_mode", "learning_primary"))
+    mode = str(operating_point.get("decision_mode", "decision_primary"))
+    if mode == "decision_primary":
+        return combined, tier_from_decision_score(
+            d_score, operating_point, market=market, vertical=vertical
+        )
     if mode == "learning_primary":
         return combined, tier_from_heads(abuse, fraud, operating_point)
     return combined, tier_for_score(combined, operating_point)

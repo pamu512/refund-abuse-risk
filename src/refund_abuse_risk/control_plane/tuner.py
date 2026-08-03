@@ -168,13 +168,48 @@ def run_threshold_tuner(
     if "target_pattern_recall" in current_thresholds:
         target_recall = float(current_thresholds["target_pattern_recall"])
 
+    min_prec = current_thresholds.get("min_precision_at_soft", 0.15)
+    max_fp = current_thresholds.get("max_fp_rate_at_soft")
     recommended = recommend_head_thresholds(
         abuse_y,
         abuse_scores,
         fraud_y,
         fraud_scores,
         target_recall=target_recall,
+        min_precision_at_soft=float(min_prec) if min_prec is not None else None,
+        max_fp_rate_at_soft=float(max_fp) if max_fp is not None else None,
+        apply_floors=False,
     )
+    if not recommended.get("ok", True):
+        audit.append(
+            actor=actor,
+            action="reject",
+            market=market,
+            vertical=vertical,
+            before=dict(current_thresholds),
+            after={k: recommended.get(k) for k in THRESHOLD_KEYS if k in recommended},
+            decision="rejected",
+            reason=(
+                "honesty: cost constraints infeasible or floors would bind; "
+                f"floor_would_bind={recommended.get('floor_would_bind')}; "
+                f"cost_feasible={recommended.get('cost_feasible')}"
+            ),
+        )
+        return TuningDecision(
+            action="reject",
+            decision="rejected",
+            reason="recommended thresholds not ok (cost/floor honesty gate)",
+            before={k: float(current_thresholds.get(k, 0)) for k in THRESHOLD_KEYS if k in current_thresholds},
+            proposed_full={k: float(recommended[k]) for k in THRESHOLD_KEYS if k in recommended},
+            metrics={
+                "ok": recommended.get("ok"),
+                "floor_would_bind": recommended.get("floor_would_bind"),
+                "cost_feasible": recommended.get("cost_feasible"),
+                "abuse_soft_cost_info": recommended.get("abuse_soft_cost_info"),
+                "fraud_soft_cost_info": recommended.get("fraud_soft_cost_info"),
+            },
+        )
+
     proposed = clamp_head_thresholds(recommended, guardrails)
     # Keep target_pattern_recall from current unless recommend overwrote with same key.
     if "target_pattern_recall" in current_thresholds:

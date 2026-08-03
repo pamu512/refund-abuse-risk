@@ -1,0 +1,41 @@
+# Shadow → live refund-effect overrides (DoorDash-style control plane).
+version: "0.1.0"
+enabled: true
+# global kill switch — when true, only base tier→effect mapping applies
+kill_switch: false
+
+# Rules evaluated in order; first match wins. mode: shadow | live
+# shadow = log suggested override, still emit base effect
+# live = override refund_effect when matched
+rules:
+  - id: pin_fail_step_up
+    mode: live
+    when:
+      pin_required: 1
+      pin_verified: 0
+      min_decision_score: 25
+    effect: refund_step_up
+    reason_code: EFFECT_PIN_FAIL
+
+  - id: ai_image_review
+    mode: live
+    when:
+      min_claim_image_ai_risk: 0.80
+      claim_in_app_capture: 0
+    effect: refund_manual_review
+    reason_code: EFFECT_AI_IMAGE
+
+  - id: same_device_collusion_block
+    mode: shadow
+    when:
+      customer_courier_same_device: 1
+      min_decision_score: 40
+    effect: refund_block
+    reason_code: EFFECT_SAME_DEVICE_SHADOW
+
+  - id: high_device_risk_step_up
+    mode: live
+    when:
+      min_device_risk_score: 70
+    effect: refund_step_up
+    reason_code: EFFECT_DEVICE_RISK

@@ -53,7 +53,7 @@ def test_strong_fraud_hard_gates() -> None:
     gated, items = evaluate_hard_gates(
         {
             "user_id": "u1",
-            "strong_fraud_label": 1,
+            "prior_strong_fraud": 1,
         },
         entity_scores={},
         link_scores={},
@@ -89,23 +89,26 @@ def test_tier_bands_secondary() -> None:
     assert tier_for_score(90, op) == SuggestedTier.AUTO_DENY
 
 
-def test_combine_uses_heads_not_prior_banding() -> None:
+def test_combine_uses_decision_score_not_prior_banding() -> None:
     op = load_operating_point()
-    low_prior_combined, tier_low = combine_scores(80.0, 10.0, 5.0, op, hard_gated=False)
-    high_prior_combined, tier_high = combine_scores(80.0, 10.0, 95.0, op, hard_gated=False)
-    # Prior must not change tier or warp the score under learning_primary.
+    low_prior_combined, tier_low = combine_scores(
+        80.0, 10.0, 5.0, op, hard_gated=False, decision_score=80.0
+    )
+    high_prior_combined, tier_high = combine_scores(
+        80.0, 10.0, 95.0, op, hard_gated=False, decision_score=80.0
+    )
+    # Prior must not change tier under decision_primary.
     assert tier_low == tier_high
     assert low_prior_combined == high_prior_combined
-    assert tier_low == SuggestedTier.AUTO_DENY  # abuse 80 >= abuse_auto_deny 75
+    assert tier_low == SuggestedTier.AUTO_DENY
 
 
-def test_high_fraud_raises_display_and_tier() -> None:
+def test_high_decision_score_raises_tier() -> None:
     op = load_operating_point()
-    low_fraud, tier_low = combine_scores(40.0, 10.0, 20.0, op, hard_gated=False)
-    high_fraud, tier_high = combine_scores(40.0, 90.0, 20.0, op, hard_gated=False)
-    assert high_fraud > low_fraud
+    _, tier_low = combine_scores(40.0, 10.0, 20.0, op, hard_gated=False, decision_score=40.0)
+    _, tier_high = combine_scores(40.0, 90.0, 20.0, op, hard_gated=False, decision_score=90.0)
     assert tier_high == SuggestedTier.AUTO_DENY
-    assert tier_low in {SuggestedTier.SOFT_FRICTION, SuggestedTier.HOLD_REVIEW}
+    assert tier_low == SuggestedTier.SOFT_FRICTION
 
 
 def test_threshold_at_recall_and_recommend() -> None:

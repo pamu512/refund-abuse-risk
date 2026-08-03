@@ -10,8 +10,10 @@ build/
 examples/csv_demo/out.json
 examples/csv_demo/backtest_metrics.json
 models/*.joblib
+models/*.train_summary.json
 !data/.gitkeep
 data/*.csv
 data/*.db
 data/warehouse/
+data/large/
 examples/csv_demo/tuned_thresholds.yaml

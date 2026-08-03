@@ -12,7 +12,7 @@ def test_strong_fraud_hard_gate():
             "driver_id": "D",
             "vendor_id": "V",
             "device_id": "DEV",
-            "strong_fraud_label": 1,
+            "prior_strong_fraud": 1,
             "user_refund_count_7d": 0,
             "user_refund_rate_30d": 0,
         },

@@ -16,14 +16,18 @@ Each scored order produces an `OrderRiskSnapshot`:
 
 | Field | Description |
 |---|---|
-| `abuse_score` / `fraud_score` | Calibrated 0–100 heads (**primary decision inputs**) |
+| `abuse_score` / `fraud_score` | Calibrated 0–100 heads (evidence / diagnostics) |
+| `decision_score` | Joint stacker score — **primary tier input** under `decision_primary` |
 | `entity_scores` | Standing user / driver / vendor risk |
 | `link_scores` | UD / UV / VD / UVD standing risk |
 | `device_cluster_score` | Shared-device / farm risk |
 | `entity_prior` | Standing max-style prior for **evidence/monitoring only** |
 | `combined_score` | Display blend of heads (not banded by prior) |
 | `suggested_tier` | `auto_approve` \| `soft_friction` \| `hold_review` \| `auto_deny` |
-| `refund_effect` | Progressive refund UX hint from tier (see below) |
+| `refund_effect` | Progressive refund UX hint (tier + live effect rules) |
+| `shadow_refund_effect` | Suggested override when rule mode is `shadow` |
+| `effect_decision` | Matched rule id/mode, kill-switch flag, audit fields |
+| `refund_budget` | Advisory account budget pressure (`ok` / `elevated` / `exhausted`) |
 | `hard_gated` | `true` only for safety override (`STRONG_FRAUD_LABEL`) |
 | `reason_codes` | Short codes for UI / routing |
 | `evidence_pack` | Metric values, thresholds, entity ids, contributions |
@@ -38,12 +42,76 @@ Each scored order produces an `OrderRiskSnapshot`:
 | `hold_review` | `refund_manual_review` | CS queue |
 | `auto_deny` | `refund_block` | No auto path |
 
+### 1.1f Platform gates (Phase 3 → A++)
+
+| Gate | Behavior |
+|---|---|
+| Device / vision adapters | Nested payloads + SDK ingest envelopes normalize to feature columns |
+| SDK ingest | `ingest_sdk_signals.py` / `attach_sdk_signals` / `refresh_order(..._sdk_event=)` with `min_confidence` |
+| Effect rules | `config/effect_rules.default.yaml` — ordered shadow→live overrides + global `kill_switch` |
+| Refund budget | Pressure on snapshot; with `apply_as_effect_floor` floors `refund_effect` up when stricter |
+| Discovery → weak labels | As-of UV edge mint (`event_ts`); `fraud_discovery_weight`; never overwrites proven; proxy cannot overwrite discovery |
+| Monitoring | ECE + PSI under `monitoring`; promote requires `monitoring.ok` ∧ costed `recommended.ok` |
+| Dual-run effects | Backtest `effects_dual_run`: base vs final vs shadow rates + budget floors |
+
+### 1.1e Meaning gates (Phase 2 → A+)
+
+| Gate | Behavior |
+|---|---|
+| `decision_primary` | Tiers from `decision_thresholds` on stacked `decision_score` |
+| Slice ladders | Optional `decision_threshold_overlays` (market×vertical, first match) |
+| OOF stacker | Joint score fit on out-of-fold head probs; serve uses full-data heads |
+| Heads | Abuse/fraud remain for evidence + baseline under_threshold |
+| Slice eval | Backtest reports market×vertical metrics + recommended slice ladders |
+| Disposition lag | Labels only if `disposition_ts ≥ event_ts + lag_days` (default 7) |
+
+### 1.1d Honesty gates (Phase 1 → A+)
+
+| Gate | Behavior |
+|---|---|
+| As-of bipartite | UV anomaly uses only `event_ts ≤ order`; LOO market base rate |
+| Proxy ≠ train features | Mint rules may label; fraud head excludes mint columns by default |
+| Costed soft tune | Soft under recall **and** `min_precision_at_soft`; `recommended.ok` required to promote |
+| Soft floors | Floors that rewrite soft → fail (hold/deny floor binds are warnings) |
+| Baseline/cohort | Gate/evidence only — not head features |
+| Hard gate | `prior_strong_fraud` only (same-order `strong_fraud_label` stripped at score) |
+
+### 1.1c Platform risk feeds (device / claim / delivery)
+
+Optional columns close the biggest detection gaps vs live platforms:
+
+| Feed | Columns |
+|---|---|
+| devices | `device_risk_score`, `is_emulator`, `is_cloned_app`, `is_gps_spoof`, `is_tampered` |
+| orders | `customer_courier_same_device`, `claim_has_image`, `claim_image_ai_risk`, `claim_in_app_capture`, `pin_required`, `pin_verified`, `delivery_geofence_ok` |
+
+Vendor payloads may also be nested on the order as `device_intelligence` / `device_payload` and `claim_vision` / `vision_payload` — adapters in `integrations/device_vision.py` flatten them before feature build.
+
+**SDK ingest** (batch or claim-path) accepts vendor-agnostic envelopes and joins them onto orders with confidence gating (`config/sdk_ingest.default.yaml`):
+
+```bash
+python scripts/ingest_sdk_signals.py --orders data/orders.csv --events data/sdk_events.jsonl
+# → data/orders.sdk.csv
+```
+
+Envelope fields: `order_id`, `source` (`device` / `vision` or vendor aliases like `fingerprint` / `shield` / `incognia`), `payload`, optional `confidence` (0–1), `event_ts`. Claim-path can pass `device_sdk_event` / `vision_sdk_event` into `refresh_order`.
+
+Missing columns default to 0. Integrity signals can mint **proxy fraud** labels (OR with classic device-farm proxy). Disposition feedback:
+
+```bash
+python scripts/ingest_dispositions.py --orders data/orders.csv --dispositions data/dispositions.csv
+# → data/orders.labeled.csv
+```
+
 ### 1.1b Offline UV bipartite anomaly
 
 Batch job scores **user↔vendor** edges from history (lift vs market×vertical base rate × support). Elevated edges/nodes export to warehouse and join as features (`uv_edge_anomaly`, `user_bipartite_anomaly`, `vendor_bipartite_anomaly`). Not on claim-path latency.
 
 ```bash
 python scripts/run_bipartite_anomaly.py --history data/history.csv
+python scripts/run_bipartite_anomaly.py --history data/history.csv \
+  --mint-weak-labels data/orders.csv
+# → data/orders.discovery.csv
 ```
 
 ### 1.2 Abuse vs fraud heads

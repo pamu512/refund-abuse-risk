@@ -55,6 +55,26 @@ def load_bipartite_anomaly(config_dir: Path | None = None) -> dict[str, Any]:
     return load_yaml((config_dir or default_config_dir()) / "bipartite_anomaly.default.yaml")
 
 
+def load_disposition_labels(config_dir: Path | None = None) -> dict[str, Any]:
+    return load_yaml((config_dir or default_config_dir()) / "disposition_labels.default.yaml")
+
+
+def load_effect_rules(config_dir: Path | None = None) -> dict[str, Any]:
+    return load_yaml((config_dir or default_config_dir()) / "effect_rules.default.yaml")
+
+
+def load_refund_budget(config_dir: Path | None = None) -> dict[str, Any]:
+    return load_yaml((config_dir or default_config_dir()) / "refund_budget.default.yaml")
+
+
+def load_sdk_ingest(config_dir: Path | None = None) -> dict[str, Any]:
+    return load_yaml((config_dir or default_config_dir()) / "sdk_ingest.default.yaml")
+
+
+def load_head_hyperparams(config_dir: Path | None = None) -> dict[str, Any]:
+    return load_yaml((config_dir or default_config_dir()) / "head_hyperparams.default.yaml")
+
+
 def resolve_policy(
     policy: dict[str, Any],
     *,

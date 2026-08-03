@@ -1,12 +1,26 @@
 # Training label / sample weights for the two-head model.
 windows_days: [7, 30, 90]
 fraud_proxy_weight: 0.4
+fraud_discovery_weight: 0.15
 fraud_proven_weight: 1.0
 abuse_positive_weight: 1.0
 abuse_weak_positive_weight: 0.6
 # Negatives from weak-policy auto-approvals are down-weighted (not clean negatives).
 weak_policy_negative_weight: 0.3
 clean_negative_weight: 1.0
+# Equalize total positive vs negative mass after label weights (keeps relative weights inside class).
+class_balance: true
+
+# P0 discovery honesty — unsupervised labels must not dominate training.
+discovery:
+  # asof_daily: UV edges from history before each order day (no future leak).
+  # batch: full-history UV (legacy; leaks — not for promote-quality trains).
+  mint_mode: asof_daily
+  max_fraction_of_rows: 0.05
+  # discovery / (discovery + other fraud+) ≤ this after cap
+  max_fraction_of_fraud_positives: 0.35
+  iforest_max_fraction: 0.02
+  self_train_max_fraction: 0.01
 
 # High-confidence fraud proxy — requires support + concentration, not rate alone.
 proxy_rules:
@@ -17,3 +31,8 @@ proxy_rules:
   min_uvd_cooccur: 3
   min_coordinated_refund_rate: 0.35
   min_user_orders_30d: 5
+  # Integrity path (SHIELD/Fingerprint-style feeds): OR with classic farm proxy.
+  min_device_risk_score: 70
+  integrity_min_flags: 2  # among emulator / cloned / gps_spoof / same_device
+  # Honesty: mint proxies from rule features, but do not train the fraud head on them.
+  exclude_mint_features_from_fraud_head: true

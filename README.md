@@ -4,9 +4,9 @@ Graph/ML toolkit for **refund abuse** and **fraud** scoring on food delivery and
 
 It turns order, device, entity-graph, and user tenure/LTV signals into:
 
-- two calibrated scores (`abuse_score`, `fraud_score`)
+- two calibrated head scores (`abuse_score`, `fraud_score`) plus joint `decision_score`
 - entity / link / device standing scores
-- a **suggested** four-tier refund decision from **head thresholds**
+- a **suggested** four-tier refund decision from the **decision_score** ladder
 - reason codes + an evidence pack for ops and investigators
 
 **Design goal:** learn recurring behavioral patterns at ~**98%** recall on labeled pattern mass. Do not chase novel 2% edge cases with hard-coded rules. Downstream systems own enforcement.
@@ -70,8 +70,14 @@ orders + history + devices + users
 |---|---|
 | **orders** | `order_id`, `user_id`, `driver_id`, `vendor_id`, `device_id`, `market`, `vertical`, `amount`, `status`, `event_ts`, optional claim/labels |
 | **history** | Past orders with `is_refund`, `amount`, `event_ts`, same entity ids |
-| **devices** | `user_id`, `device_id`, `cluster_id`, `last_seen_ts` |
+| **devices** | `user_id`, `device_id`, `cluster_id`, `last_seen_ts`; optional integrity: `device_risk_score`, `is_emulator`, `is_cloned_app`, `is_gps_spoof`, `is_tampered` |
 | **users** | `user_id`, `signup_ts` (falls back to first history event if missing) |
+| **orders (optional risk)** | `customer_courier_same_device`, `claim_has_image`, `claim_image_ai_risk`, `claim_in_app_capture`, `pin_required`, `pin_verified`, `delivery_geofence_ok` |
+| **orders (nested feeds)** | `device_intelligence` / `claim_vision` vendor payloads (adapted → flat columns) |
+| **sdk events** | JSONL/JSON/CSV envelopes → `scripts/ingest_sdk_signals.py` (confidence-gated device/vision); claim-path via `refresh_order(..., device_sdk_event=, vision_sdk_event=)` |
+| **ops snapshot** | Live CS/refund$/override feed → `scripts/ingest_ops_snapshot.py` → `data/ops_snapshot.json` (merged into promote gate) |
+| **closed-loop labels** | `scripts/generate_closed_loop_labels.py` → dispositions / chargebacks / QA sample / SDK; serve-path `train_model.py` loads via `load_training_orders` (prefer `orders.labeled.csv` + SDK overlay; `--no-closed-loop` to skip). One-shot: `scripts/refresh_train_bundle.py` |
+| **dispositions** | `order_id`, `disposition`, `disposition_ts` → label feedback via `scripts/ingest_dispositions.py` |
 
 Labels for training: `abuse_label`, `fraud_label`, `fraud_label_source` (`proven` / `proxy`), `strong_fraud_label`, `weak_policy_negative`, `abuse_label_weak`.
 
@@ -88,6 +94,11 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 python scripts/generate_demo_data.py
+python scripts/generate_large_demo_data.py --rows 500000   # → data/large/ (+ feature_frame)
+# P0 train: serve-path features + closed-loop labels/SDK + as-of UV + discovery cap
+python scripts/train_model.py --feature-source serve --max-rows 5000 --passes 4
+# Or regenerate labels + train:
+# python scripts/refresh_train_bundle.py --max-orders 8000 --max-rows 2000
 pytest -q
 python -m examples.csv_demo
 python scripts/backtest.py
@@ -105,11 +116,14 @@ Demo prints sample snapshots; JSON lands in `examples/csv_demo/out.json`.
 
 | File | Purpose |
 |---|---|
-| [`config/operating_point.default.yaml`](config/operating_point.default.yaml) | **Primary knobs:** `head_thresholds`, display blend, decision mode |
+| [`config/operating_point.default.yaml`](config/operating_point.default.yaml) | **Primary knobs:** `decision_thresholds`, optional `decision_threshold_overlays`, heads, decision mode |
 | [`config/policy_guardrails.default.yaml`](config/policy_guardrails.default.yaml) | Absolute bounds + `auto_apply.max_abs_delta` (HIL if larger) |
 | [`config/policy.default.yaml`](config/policy.default.yaml) | Safety hard gate (`strong_fraud_label`) + evidence weights |
 | [`config/label_weights.default.yaml`](config/label_weights.default.yaml) | Train-time proven/proxy weights and proxy minting rules |
 | [`config/behavior_baselines.default.yaml`](config/behavior_baselines.default.yaml) | Entity/pair/device/cohort baselines + precision discount / trust credit |
+| [`config/effect_rules.default.yaml`](config/effect_rules.default.yaml) | Shadow→live refund-effect overrides + kill switch |
+| [`config/refund_budget.default.yaml`](config/refund_budget.default.yaml) | Advisory account refund-budget pressure contract |
+| [`config/sdk_ingest.default.yaml`](config/sdk_ingest.default.yaml) | Device/vision SDK envelope ingest + min confidence |
 
 **ML adjusts thresholds automatically within `max_abs_delta`; larger jumps need HIL approval** (`scripts/run_tuner.py --approve`). Head-threshold / policy YAML changes do not require retraining. Model / label-weight changes do.
 
@@ -124,9 +138,15 @@ python scripts/export_behavior_baselines.py
 
 python scripts/run_bipartite_anomaly.py
 # → data/warehouse/bipartite_uv_edges|nodes/as_of_date=YYYY-MM-DD/part.csv
+python scripts/run_bipartite_anomaly.py --mint-weak-labels data/orders.csv
+# → data/orders.discovery.csv (weak discovery labels; proven untouched)
 ```
 
-Snapshots include `refund_effect` (`refund_auto_grant` → `refund_step_up` → `refund_manual_review` → `refund_block`) mapped from `suggested_tier` for downstream refund UX. Offline UV bipartite anomaly feeds `uv_edge_anomaly` / `*_bipartite_anomaly` features.
+Snapshots include `refund_effect` (`refund_auto_grant` → `refund_step_up` → `refund_manual_review` → `refund_block`) mapped from `suggested_tier` for downstream refund UX. Offline UV bipartite anomaly feeds `uv_edge_anomaly` / `*_bipartite_anomaly` features (**as-of** `event_ts`, leave-one-edge-out base rate).
+
+**Honesty (Phase 1):** proxy mint features held out of the fraud head; baseline/cohort lifts are gate-only; soft thresholds are costed (`min_precision_at_soft`); promote refuses soft-floor rewrites; hard gates use `prior_strong_fraud` (not same-order labels); backtest primary fraud metric is **proven-only**; primary holdout is **time-OOT** (`--oot-days`).
+
+**Meaning (Phase 2):** `decision_mode: decision_primary` — tiers cut on stacked `decision_score`; heads are evidence. Backtest reports market×vertical slices. Dispositions honor `lag_days` (default 7) before minting labels.
 
 ---
 

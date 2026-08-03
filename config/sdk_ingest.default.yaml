@@ -1,0 +1,20 @@
+# Device / claim-vision SDK signal ingest (vendor-agnostic envelopes).
+version: "0.1.0"
+enabled: true
+
+# Drop / ignore signals below this confidence (0–1). Missing confidence → 1.0.
+min_confidence: 0.50
+
+# When true, write nested device_intelligence / claim_vision onto the order
+# (score path already adapts these) plus flat feature columns.
+write_nested_payloads: true
+
+# When true, overwrite existing non-zero order feature columns with SDK values
+# if SDK confidence is higher than the prior sdk_*_confidence on the order.
+prefer_higher_confidence: true
+
+sources:
+  device:
+    aliases: [device, device_intelligence, fingerprint, shield, incognia]
+  vision:
+    aliases: [vision, claim_vision, image, media, pin]

@@ -7,10 +7,55 @@ import pandas as pd
 
 from refund_abuse_risk.baselines.store import BASELINE_FEATURE_KINDS, zero_baseline_features
 from refund_abuse_risk.graph.bipartite import (
-    bipartite_feature_lookups,
-    features_for_order as bipartite_features_for_order,
-    score_uv_bipartite,
+    bipartite_features_as_of,
     zero_bipartite_features,
+)
+
+# Features used to mint proxy fraud labels — excluded from fraud head when
+# label_weights.proxy_rules.exclude_mint_features_from_fraud_head is true.
+PROXY_MINT_FEATURE_COLUMNS: tuple[str, ...] = (
+    "device_cluster_size",
+    "accounts_per_device",
+    "uvd_refund_lift",
+    "uvd_refund_share",
+    "uvd_cooccur",
+    "device_risk_score",
+    "is_emulator",
+    "is_cloned_app",
+    "is_gps_spoof",
+    "customer_courier_same_device",
+)
+
+# Baseline/cohort lifts are gate-only (post-score). Kept on the row for evidence
+# but omitted from head training columns so train/serve stay aligned.
+GATE_ONLY_FEATURE_COLUMNS: tuple[str, ...] = (
+    "user_baseline_lift",
+    "user_baseline_under_rate",
+    "user_baseline_elevated_streak",
+    "user_is_clean_baseline",
+    "uv_baseline_lift",
+    "uv_baseline_under_rate",
+    "driver_baseline_lift",
+    "driver_baseline_under_rate",
+    "driver_baseline_elevated_streak",
+    "driver_is_clean_baseline",
+    "vendor_baseline_lift",
+    "vendor_baseline_under_rate",
+    "vendor_baseline_elevated_streak",
+    "vendor_is_clean_baseline",
+    "device_baseline_lift",
+    "device_baseline_under_rate",
+    "device_is_clean_baseline",
+    "ud_baseline_lift",
+    "uvd_baseline_lift",
+    "uvd_baseline_under_rate",
+    "uvd_baseline_elevated_streak",
+    "uvd_is_clean_baseline",
+    "user_cohort_lift",
+    "driver_cohort_lift",
+    "vendor_cohort_lift",
+    "device_cohort_lift",
+    "tenure_bucket_code",
 )
 
 _BASELINE_FEATURE_COLUMNS: list[str] = []
@@ -36,6 +81,28 @@ _BIPARTITE_FEATURE_COLUMNS = [
     "uv_edge_anomaly",
     "user_bipartite_anomaly",
     "vendor_bipartite_anomaly",
+    "uv_edge_lift",
+    "uv_edge_n_orders",
+    "uv_edge_elevated",
+    "uv_mo_possible_collusion",
+    "uv_mo_user_scatter",
+    "uv_mo_elevated_uv",
+]
+_PLATFORM_RISK_FEATURE_COLUMNS = [
+    # Device integrity (Fingerprint/SHIELD-style feed columns; 0 if absent).
+    "device_risk_score",
+    "is_emulator",
+    "is_cloned_app",
+    "is_gps_spoof",
+    "is_tampered",
+    "customer_courier_same_device",
+    # Claim media + delivery proof.
+    "claim_has_image",
+    "claim_image_ai_risk",
+    "claim_in_app_capture",
+    "pin_required",
+    "pin_verified",
+    "delivery_geofence_ok",
 ]
 
 # Shared columns available on every scored row.
@@ -91,6 +158,7 @@ FEATURE_COLUMNS: list[str] = [
     "order_status_delivered",
     *_BASELINE_FEATURE_COLUMNS,
     *_BIPARTITE_FEATURE_COLUMNS,
+    *_PLATFORM_RISK_FEATURE_COLUMNS,
 ]
 
 # Abuse head: behavioral rate / claim / GMV / tenure-LTV patterns.
@@ -124,22 +192,21 @@ ABUSE_FEATURE_COLUMNS: list[str] = [
     "claim_reason_quality",
     "claim_reason_wrong_order",
     "order_status_delivered",
-    "user_baseline_lift",
-    "user_baseline_under_rate",
-    "user_baseline_elevated_streak",
-    "user_is_clean_baseline",
-    "uv_baseline_lift",
-    "uv_baseline_under_rate",
-    "user_cohort_lift",
-    "tenure_bucket_code",
     "uv_edge_anomaly",
     "user_bipartite_anomaly",
+    "uv_edge_lift",
+    "uv_edge_elevated",
+    "claim_has_image",
+    "claim_image_ai_risk",
+    "claim_in_app_capture",
+    "pin_required",
+    "pin_verified",
 ]
 
 # Fraud head: graph / device collusion signals (avoids pure rate-cap identity).
+# PROXY_MINT_FEATURE_COLUMNS are omitted by default; added back only when
+# exclude_mint_features_from_fraud_head is false.
 FRAUD_FEATURE_COLUMNS: list[str] = [
-    "accounts_per_device",
-    "device_cluster_size",
     "device_churn_30d",
     "ud_cooccur",
     "ud_refund_lift",
@@ -149,9 +216,6 @@ FRAUD_FEATURE_COLUMNS: list[str] = [
     "uv_refund_share",
     "vd_cooccur",
     "vd_refund_lift",
-    "uvd_cooccur",
-    "uvd_refund_lift",
-    "uvd_refund_share",
     "related_account_count",
     "related_refund_count_30d",
     "combined_refund_count_30d",
@@ -162,29 +226,31 @@ FRAUD_FEATURE_COLUMNS: list[str] = [
     "user_orders_30d",
     "is_food",
     "is_qcommerce",
-    "driver_baseline_lift",
-    "driver_baseline_under_rate",
-    "driver_baseline_elevated_streak",
-    "driver_is_clean_baseline",
-    "vendor_baseline_lift",
-    "vendor_baseline_under_rate",
-    "vendor_baseline_elevated_streak",
-    "vendor_is_clean_baseline",
-    "device_baseline_lift",
-    "device_baseline_under_rate",
-    "device_is_clean_baseline",
-    "ud_baseline_lift",
-    "uvd_baseline_lift",
-    "uvd_baseline_under_rate",
-    "uvd_baseline_elevated_streak",
-    "uvd_is_clean_baseline",
-    "driver_cohort_lift",
-    "vendor_cohort_lift",
-    "device_cohort_lift",
     "uv_edge_anomaly",
     "user_bipartite_anomaly",
     "vendor_bipartite_anomaly",
+    "uv_edge_lift",
+    "uv_edge_n_orders",
+    "uv_edge_elevated",
+    "uv_mo_possible_collusion",
+    "uv_mo_user_scatter",
+    "uv_mo_elevated_uv",
+    "is_tampered",
+    "claim_image_ai_risk",
+    "pin_required",
+    "pin_verified",
+    "delivery_geofence_ok",
 ]
+
+
+def fraud_model_feature_columns(*, exclude_proxy_mint: bool = True) -> list[str]:
+    """Fraud-head columns; mint features held out by default (honesty gate)."""
+    cols = list(FRAUD_FEATURE_COLUMNS)
+    if not exclude_proxy_mint:
+        for c in PROXY_MINT_FEATURE_COLUMNS:
+            if c not in cols:
+                cols.append(c)
+    return cols
 
 
 def _parse_ts(value: Any) -> datetime:
@@ -219,13 +285,12 @@ def _history_as_of(
     """Point-in-time history: events at/before as_of, excluding the scored order."""
     if history.empty:
         return history
-    out = history.copy()
+    # Prefer pre-parsed `_ts` (set by build_order_feature_frame). Never copy the full frame.
+    ts = history["_ts"] if "_ts" in history.columns else pd.to_datetime(history["event_ts"], utc=True)
+    mask = ts <= _as_utc_timestamp(as_of)
     if exclude_order_id:
-        out = out[out["order_id"].astype(str) != str(exclude_order_id)]
-    if out.empty:
-        return out
-    mask = pd.to_datetime(out["event_ts"], utc=True) <= _as_utc_timestamp(as_of)
-    return out.loc[mask]
+        mask = mask & (history["order_id"].astype(str) != str(exclude_order_id))
+    return history.loc[mask]
 
 
 def _shrink_rate(refunds: float, orders: float, baseline: float, prior_strength: float = 3.0) -> float:
@@ -304,6 +369,66 @@ def _link_stats(
     # Share of this user's refunds that occur on this link (collusion concentration).
     share = (refunds / user_refunds_30d) if user_refunds_30d > 0 else 0.0
     return {"cooccur": n, "refund_lift": lift, "refund_share": float(min(share, 1.0))}
+
+
+def _as_float(row: dict[str, Any] | pd.Series, key: str, default: float = 0.0) -> float:
+    if key not in row:
+        return float(default)
+    val = row[key]
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return float(default)
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _zero_platform_risk_features() -> dict[str, float]:
+    return {k: 0.0 for k in _PLATFORM_RISK_FEATURE_COLUMNS}
+
+
+def _device_integrity(
+    devices: pd.DataFrame,
+    device_id: str,
+    order: dict[str, Any] | None = None,
+) -> dict[str, float]:
+    out = {
+        "device_risk_score": 0.0,
+        "is_emulator": 0.0,
+        "is_cloned_app": 0.0,
+        "is_gps_spoof": 0.0,
+        "is_tampered": 0.0,
+    }
+    if devices is not None and not devices.empty and device_id:
+        rows = devices.loc[devices["device_id"].astype(str) == str(device_id)]
+        if not rows.empty:
+            row = rows.iloc[0]
+            out["device_risk_score"] = max(0.0, min(100.0, _as_float(row, "device_risk_score", 0.0)))
+            for key in ("is_emulator", "is_cloned_app", "is_gps_spoof", "is_tampered"):
+                out[key] = 1.0 if _as_float(row, key, 0.0) >= 1 else 0.0
+    # Nested adapter / order fields fill gaps (device table wins when non-zero).
+    if order:
+        ord_risk = max(0.0, min(100.0, _as_float(order, "device_risk_score", 0.0)))
+        if out["device_risk_score"] <= 0 and ord_risk > 0:
+            out["device_risk_score"] = ord_risk
+        for key in ("is_emulator", "is_cloned_app", "is_gps_spoof", "is_tampered"):
+            if out[key] < 1 and _as_float(order, key, 0.0) >= 1:
+                out[key] = 1.0
+    return out
+
+
+def _claim_delivery_features(order: dict[str, Any]) -> dict[str, float]:
+    return {
+        "customer_courier_same_device": 1.0
+        if _as_float(order, "customer_courier_same_device", 0.0) >= 1
+        else 0.0,
+        "claim_has_image": 1.0 if _as_float(order, "claim_has_image", 0.0) >= 1 else 0.0,
+        "claim_image_ai_risk": max(0.0, min(1.0, _as_float(order, "claim_image_ai_risk", 0.0))),
+        "claim_in_app_capture": 1.0 if _as_float(order, "claim_in_app_capture", 0.0) >= 1 else 0.0,
+        "pin_required": 1.0 if _as_float(order, "pin_required", 0.0) >= 1 else 0.0,
+        "pin_verified": 1.0 if _as_float(order, "pin_verified", 0.0) >= 1 else 0.0,
+        "delivery_geofence_ok": 1.0 if _as_float(order, "delivery_geofence_ok", 0.0) >= 1 else 0.0,
+    }
 
 
 def _device_stats(
@@ -500,6 +625,14 @@ def build_order_feature_row(
     devices: pd.DataFrame,
     users: pd.DataFrame | None = None,
 ) -> dict[str, float]:
+    from refund_abuse_risk.integrations.device_vision import merge_platform_signals
+
+    # Nested vendor payloads (Fingerprint/SHIELD / vision) → flat feature columns.
+    order = merge_platform_signals(
+        dict(order),
+        device_payload=order.get("device_intelligence") or order.get("device_payload"),
+        vision_payload=order.get("claim_vision") or order.get("vision_payload"),
+    )
     as_of = _parse_ts(order.get("event_ts") or order.get("order_ts"))
     order_id = str(order.get("order_id", "") or "")
     hist = _history_as_of(history, as_of, exclude_order_id=order_id or None)
@@ -610,6 +743,11 @@ def build_order_feature_row(
         "order_status_delivered": 1.0 if status == "delivered" else 0.0,
         **zero_baseline_features(),
         **zero_bipartite_features(),
+        **_zero_platform_risk_features(),
+        **_device_integrity(devices, device_id, order),
+        **_claim_delivery_features(order),
+        # As-of UV bipartite (no future leakage).
+        **bipartite_features_as_of(order, hist),
     }
 
 
@@ -620,14 +758,17 @@ def build_order_feature_frame(
     users: pd.DataFrame | None = None,
     bipartite_cfg: dict[str, Any] | None = None,
 ) -> pd.DataFrame:
-    edges, nodes = score_uv_bipartite(history, bipartite_cfg)
-    edge_map, node_map = bipartite_feature_lookups(edges, nodes)
+    _ = bipartite_cfg  # reserved; per-order as-of path uses defaults for now
     rows: list[dict[str, float]] = []
     meta: list[dict[str, Any]] = []
+    # Parse timestamps once for as-of filters (ponytail: ceiling = still O(n) row loop).
+    hist = history
+    if hist is not None and not hist.empty and "_ts" not in hist.columns:
+        hist = hist.copy()
+        hist["_ts"] = pd.to_datetime(hist["event_ts"], utc=True)
     for _, order in orders.iterrows():
         od = order.to_dict()
-        feat = build_order_feature_row(od, history, devices, users=users)
-        feat.update(bipartite_features_for_order(od, edge_map=edge_map, node_map=node_map))
+        feat = build_order_feature_row(od, hist, devices, users=users)
         rows.append(feat)
         meta.append(
             {
@@ -648,6 +789,8 @@ def build_order_feature_frame(
                 "fraud_label_source": od.get("fraud_label_source", ""),
                 "strong_fraud_label": od.get("strong_fraud_label", 0),
                 "weak_policy_negative": od.get("weak_policy_negative", 0),
+                # Account prior from dispositions (safe for hard gates).
+                "prior_strong_fraud": od.get("prior_strong_fraud", 0),
             }
         )
     feat_df = pd.DataFrame(rows, columns=FEATURE_COLUMNS)

@@ -1,0 +1,2 @@
+{"order_id": "O-CLEAN-0", "source": "device", "vendor": "demo_shield", "confidence": 0.92, "event_ts": "2026-07-28T10:00:00Z", "payload": {"risk_score": 88, "emulator": true, "cloned_app": true, "gps_spoof": false, "tampered": true, "customer_courier_same_device": false}}
+{"order_id": "O-CLEAN-0", "source": "vision", "vendor": "demo_vision", "confidence": 0.85, "event_ts": "2026-07-28T10:05:00Z", "payload": {"has_image": true, "ai_risk": 0.7, "in_app_capture": true, "pin_required": true, "pin_verified": false, "geofence_ok": true}}

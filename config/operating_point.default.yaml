@@ -1,22 +1,39 @@
-# Suggested tiers from calibrated heads. Downstream owns enforcement.
-model_version: "0.4.0"
-policy_version: "0.4.0"
+# Suggested tiers from calibrated decision_score. Downstream owns enforcement.
+model_version: "0.6.2"
+policy_version: "0.6.2"
 
-# learning_primary: tier from abuse/fraud head thresholds (no entity-prior banding).
-# score_only: fall back to mapping display score via tiers.*.max_score.
-decision_mode: learning_primary
+# decision_primary: tier from joint decision_score ladder (heads = evidence).
+# learning_primary: legacy OR of abuse/fraud head thresholds.
+# score_only: map display score via tiers.*.max_score.
+decision_mode: decision_primary
 
-# Display score only (monitoring / UI). Does not band or override head tiers.
+# Display blend (monitoring). Joint decision_score is authoritative for tiers.
 score_display:
   abuse: 0.5
   fraud: 0.5
 
-# Head thresholds — primary decision knobs (no retrain).
-# Soft thresholds target ~target_pattern_recall of labeled abuse|fraud patterns.
-# Recompute suggestions with: python scripts/backtest.py --tune
-# (writes examples/csv_demo/tuned_thresholds.yaml; use --write-config to promote).
+# Joint decision ladder — primary cutoffs (no retrain to move these).
+decision_thresholds:
+  soft_friction: 35
+  hold_review: 50
+  auto_deny: 75
+
+# Optional market×vertical ladders (first match wins). Empty = global only.
+# Example:
+#   - market: SG
+#     vertical: food
+#     soft_friction: 32
+#     hold_review: 48
+#     auto_deny: 72
+decision_threshold_overlays: []
+
+# Head thresholds — evidence, baseline under_threshold, legacy learning_primary.
+# Soft also used for costed head diagnostics in backtest.
 head_thresholds:
   target_pattern_recall: 0.98
+  min_precision_at_soft: 0.15
+  # Optional $ cost ceiling on mean FP refund amount at soft (null = ungated).
+  max_fp_refund_dollars_mean: null
   abuse_soft_friction: 35
   fraud_soft_friction: 30
   abuse_hold_review: 50
@@ -36,3 +53,20 @@ tiers:
     max_score: 100
 
 entity_risk_change_delta: 10.0
+
+# Calibration / drift / ops promote gates (backtest blocks promote when breached).
+monitoring:
+  max_decision_ece: 0.20
+  max_psi_train_test: 0.35
+  # Ops proxies from dual-run (CS / overrides / refund $). Null ceiling = ungated.
+  max_hold_rate: 0.55
+  max_live_override_rate: 0.35
+  max_refund_grant_rate: 0.90
+  max_refund_dollar_per_order: null
+  max_cs_queue_depth: 500
+  max_shadow_override_rate: null
+  # Live feed: scripts/ingest_ops_snapshot.py → data/ops_snapshot.json (backtest merges).
+  # ops_snapshot:
+  #   cs_queue_depth: 120
+  #   refund_dollar_per_order: 8.5
+  ops_snapshot: {}

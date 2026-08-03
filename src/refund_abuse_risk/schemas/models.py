@@ -57,11 +57,13 @@ class OrderRiskSnapshot(BaseModel):
     vertical: str
     abuse_score: float
     fraud_score: float
+    decision_score: float = 0.0
     entity_scores: EntityScores
     link_scores: LinkScores
     device_cluster_score: float = 0.0
     suggested_tier: SuggestedTier
     refund_effect: RefundEffect = RefundEffect.REFUND_AUTO_GRANT
+    shadow_refund_effect: RefundEffect | None = None
     reason_codes: list[str] = Field(default_factory=list)
     evidence_pack: EvidencePack = Field(default_factory=EvidencePack)
     hard_gated: bool = False
@@ -75,6 +77,10 @@ class OrderRiskSnapshot(BaseModel):
     threshold_relax_points: float = 0.0
     baseline_hil_required: bool = False
     baseline_gate: dict[str, Any] = Field(default_factory=dict)
+    # Shadow→live effect control plane (audit / kill-switch).
+    effect_decision: dict[str, Any] = Field(default_factory=dict)
+    # Advisory account refund-budget pressure for downstream state machines.
+    refund_budget: dict[str, Any] = Field(default_factory=dict)
 
 
 class LifecycleEvent(str, Enum):

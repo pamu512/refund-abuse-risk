@@ -64,15 +64,18 @@ def test_feature_lookup_and_export(tmp_path: Path) -> None:
         _hist(),
         {"min_edge_orders": 3, "min_edge_refunds": 2, "min_lift": 2.0, "min_refund_rate": 0.25},
     )
-    edge_map, node_map = bipartite_feature_lookups(edges, nodes)
+    edge_map, node_map, edge_attrs = bipartite_feature_lookups(edges, nodes)
     feat = features_for_order(
         {"user_id": "Ubad", "vendor_id": "Vbad", "market": "SG", "vertical": "food"},
         edge_map=edge_map,
         node_map=node_map,
+        edge_attrs=edge_attrs,
     )
     assert feat["uv_edge_anomaly"] > 0
     assert feat["user_bipartite_anomaly"] > 0
     assert feat["vendor_bipartite_anomaly"] > 0
+    assert feat["uv_edge_elevated"] >= 0.0
+    assert feat["uv_edge_lift"] >= 1.0
     edge_path, node_path = export_partitions(
         edges, nodes, root=tmp_path, as_of_date="2026-08-03", version="0.1.0"
     )

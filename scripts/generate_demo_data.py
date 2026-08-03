@@ -178,6 +178,8 @@ def main() -> None:
                 "fraud_label": 1,
                 "fraud_label_source": "proven" if i < 8 else "proxy",
                 "strong_fraud_label": 1 if i < 8 else 0,
+                # Account-level prior (disposition), not same-order training label.
+                "prior_strong_fraud": 1 if i < 8 else 0,
                 "weak_policy_negative": 0,
             }
         )
@@ -445,13 +447,159 @@ def main() -> None:
             }
         )
 
+    # Integrity / claim-proof cohort: cloned app + same device as courier + AI claim photo.
+    for i in range(4):
+        uid, did, vid, dev = f"UINT{i}", f"DINT{i}", f"VINT{i}", f"DEVINT{i}"
+        add_user(uid, base - timedelta(days=60 + i))
+        device_rows.append(
+            {
+                "user_id": uid,
+                "device_id": dev,
+                "cluster_id": f"CINT{i}",
+                "last_seen_ts": (base + timedelta(days=26)).isoformat(),
+                "device_risk_score": 88,
+                "is_emulator": 0,
+                "is_cloned_app": 1,
+                "is_gps_spoof": 1,
+                "is_tampered": 1,
+            }
+        )
+        for j in range(6):
+            ts = base + timedelta(days=j + 10, hours=i)
+            history_rows.append(
+                {
+                    "order_id": f"H-INT-{i}-{j}",
+                    "user_id": uid,
+                    "driver_id": did,
+                    "vendor_id": vid,
+                    "device_id": dev,
+                    "market": "SG",
+                    "vertical": "food",
+                    "amount": 45,
+                    "is_refund": 1 if j >= 2 else 0,
+                    "event_ts": ts.isoformat(),
+                    "status": "delivered",
+                    "claim_reason": "missing_item" if j >= 2 else "",
+                }
+            )
+        order_rows.append(
+            {
+                "order_id": f"O-INT-{i}",
+                "user_id": uid,
+                "driver_id": did,
+                "vendor_id": vid,
+                "device_id": dev,
+                "market": "SG",
+                "vertical": "food",
+                "amount": 45,
+                "status": "delivered",
+                "claim_reason": "missing_item",
+                "event_ts": (base + timedelta(days=28, hours=i)).isoformat(),
+                "abuse_label": 1,
+                "abuse_label_weak": 0,
+                "fraud_label": 0,
+                "fraud_label_source": "",
+                "strong_fraud_label": 0,
+                "weak_policy_negative": 0,
+                "customer_courier_same_device": 1,
+                "claim_has_image": 1,
+                "claim_image_ai_risk": 0.92,
+                "claim_in_app_capture": 0,
+                "pin_required": 1,
+                "pin_verified": 0,
+                "delivery_geofence_ok": 0,
+            }
+        )
+
+    devices_df = pd.DataFrame(device_rows)
+    for col, default in (
+        ("device_risk_score", 0),
+        ("is_emulator", 0),
+        ("is_cloned_app", 0),
+        ("is_gps_spoof", 0),
+        ("is_tampered", 0),
+    ):
+        if col not in devices_df.columns:
+            devices_df[col] = default
+        devices_df[col] = devices_df[col].fillna(default)
+    # Proxy farm devices look like high-risk / cloned.
+    farm = devices_df["cluster_id"].astype(str).eq("CPROXY")
+    devices_df.loc[farm, "device_risk_score"] = 80
+    devices_df.loc[farm, "is_cloned_app"] = 1
+    devices_df.loc[farm, "is_emulator"] = 1
+
+    orders_df = pd.DataFrame(order_rows)
+    for col, default in (
+        ("customer_courier_same_device", 0),
+        ("claim_has_image", 0),
+        ("claim_image_ai_risk", 0.0),
+        ("claim_in_app_capture", 0),
+        ("pin_required", 0),
+        ("pin_verified", 0),
+        ("delivery_geofence_ok", 0),
+        ("prior_strong_fraud", 0),
+    ):
+        if col not in orders_df.columns:
+            orders_df[col] = default
+        orders_df[col] = orders_df[col].fillna(default)
+    # Clean deliveries: PIN verified + geofence ok; abuse claims often have external AI images.
+    clean = orders_df["order_id"].astype(str).str.startswith("O-CLEAN-")
+    orders_df.loc[clean, "pin_required"] = 1
+    orders_df.loc[clean, "pin_verified"] = 1
+    orders_df.loc[clean, "delivery_geofence_ok"] = 1
+    abuse_like = orders_df["abuse_label"].astype(int) >= 1
+    orders_df.loc[abuse_like & ~orders_df["order_id"].astype(str).str.startswith("O-INT-"), "claim_has_image"] = 1
+    orders_df.loc[
+        orders_df["order_id"].astype(str).str.startswith("O-BURN-"), "claim_image_ai_risk"
+    ] = 0.85
+    orders_df.loc[
+        orders_df["order_id"].astype(str).str.startswith("O-BURN-"), "claim_in_app_capture"
+    ] = 0
+
+    # Closed-loop dispositions (subset). Timestamps honor lag_days (>= event + 7d).
+    disposition_rows = [
+        {
+            "order_id": "O-FRAUD-0",
+            "disposition": "investigator_confirmed_fraud",
+            "disposition_ts": (base + timedelta(days=36)).isoformat(),
+        },
+        {
+            "order_id": "O-WEAK-0",
+            "disposition": "weak_policy_auto_grant",
+            "disposition_ts": (base + timedelta(days=32)).isoformat(),
+        },
+        {
+            "order_id": "O-BURN-0",
+            "disposition": "manual_denied_abuse",
+            "disposition_ts": (base + timedelta(days=35)).isoformat(),
+        },
+        {
+            "order_id": "O-INT-0",
+            "disposition": "manual_denied_fraud",
+            "disposition_ts": (base + timedelta(days=36)).isoformat(),
+        },
+        {
+            "order_id": "O-CLEAN-0",
+            "disposition": "investigator_cleared",
+            "disposition_ts": (base + timedelta(days=33)).isoformat(),
+        },
+        # Too early vs lag — should be skipped by ingest.
+        {
+            "order_id": "O-ABUSE-0",
+            "disposition": "manual_denied_abuse",
+            "disposition_ts": (base + timedelta(days=26, hours=2)).isoformat(),
+        },
+    ]
+
     pd.DataFrame(history_rows).to_csv(DATA / "history.csv", index=False)
-    pd.DataFrame(order_rows).to_csv(DATA / "orders.csv", index=False)
-    pd.DataFrame(device_rows).to_csv(DATA / "devices.csv", index=False)
+    orders_df.to_csv(DATA / "orders.csv", index=False)
+    devices_df.to_csv(DATA / "devices.csv", index=False)
     pd.DataFrame(user_rows).to_csv(DATA / "users.csv", index=False)
+    pd.DataFrame(disposition_rows).to_csv(DATA / "dispositions.csv", index=False)
     print(
-        f"Wrote {len(history_rows)} history, {len(order_rows)} orders, "
-        f"{len(device_rows)} devices, {len(user_rows)} users to {DATA}"
+        f"Wrote {len(history_rows)} history, {len(orders_df)} orders, "
+        f"{len(devices_df)} devices, {len(user_rows)} users, "
+        f"{len(disposition_rows)} dispositions to {DATA}"
     )
 
 

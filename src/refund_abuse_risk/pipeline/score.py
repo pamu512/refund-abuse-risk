@@ -14,12 +14,16 @@ from refund_abuse_risk.baselines.gate import (
 from refund_abuse_risk.baselines.store import BehaviorBaselineStore
 from refund_abuse_risk.config import (
     load_behavior_baselines,
+    load_effect_rules,
     load_label_weights,
     load_operating_point,
     load_policy,
+    load_refund_budget,
 )
+from refund_abuse_risk.control_plane.effects import resolve_refund_effect
 from refund_abuse_risk.features.builders import build_order_feature_frame, build_order_feature_row
 from refund_abuse_risk.graph.entities import EntityGraphIndex
+from refund_abuse_risk.integrations.device_vision import merge_platform_signals
 from refund_abuse_risk.model.two_head import (
     TwoHeadModel,
     device_cluster_score_from_features,
@@ -33,16 +37,34 @@ from refund_abuse_risk.schemas.models import (
     LinkScores,
     OrderRiskSnapshot,
 )
+from refund_abuse_risk.scoring.budget import apply_budget_effect_floor, evaluate_refund_budget
+from refund_abuse_risk.scoring.decision import operating_point_for_slice
 from refund_abuse_risk.scoring.policy import (
     build_evidence_pack,
     combine_scores,
     evaluate_hard_gates,
     policy_hash,
-    tier_to_refund_effect,
 )
 
 _ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_BASELINE_DB = _ROOT / "data" / "behavior_baselines.db"
+
+# Same-order training labels must not drive hard gates / scores (honesty).
+_LABEL_LEAK_KEYS = (
+    "abuse_label",
+    "abuse_label_weak",
+    "fraud_label",
+    "fraud_label_source",
+    "strong_fraud_label",
+    "weak_policy_negative",
+)
+
+
+def _strip_label_leak(features: dict[str, Any]) -> dict[str, Any]:
+    out = dict(features)
+    for key in _LABEL_LEAK_KEYS:
+        out.pop(key, None)
+    return out
 
 
 class OrderRiskCache:
@@ -87,19 +109,30 @@ def score_feature_row(
     baseline_store: BehaviorBaselineStore | None = None,
     cohort_store: CohortBaselineStore | None = None,
     baseline_cfg: dict[str, Any] | None = None,
+    effect_cfg: dict[str, Any] | None = None,
+    budget_cfg: dict[str, Any] | None = None,
     update_baselines: bool = True,
 ) -> OrderRiskSnapshot:
     policy = policy or load_policy()
     operating_point = operating_point or load_operating_point()
     baseline_cfg = baseline_cfg if baseline_cfg is not None else load_behavior_baselines()
-    features = dict(row)
-    # Attach read-only baseline features before predict when store is available.
+    effect_cfg = effect_cfg if effect_cfg is not None else load_effect_rules()
+    budget_cfg = budget_cfg if budget_cfg is not None else load_refund_budget()
+    raw = dict(row)
+    raw = merge_platform_signals(
+        raw,
+        device_payload=raw.get("device_intelligence") or raw.get("device_payload"),
+        vision_payload=raw.get("claim_vision") or raw.get("vision_payload"),
+    )
+    features = _strip_label_leak(raw)
+    # Attach read-only baseline features for gate/evidence (not model head inputs).
     if baseline_store is not None:
         features.update(baseline_store.feature_map_for_order(features))
     scored = model.predict_proba(pd.DataFrame([features])).iloc[0]
 
     abuse_score = float(scored["abuse_score"])
     fraud_score = float(scored["fraud_score"])
+    decision_score = float(scored.get("decision_score", max(abuse_score, fraud_score)))
     entity_scores = entity_scores_from_features(features)
     link_scores = link_scores_from_features(features)
     device_score = device_cluster_score_from_features(features)
@@ -117,8 +150,14 @@ def score_feature_row(
     )
     # Cohort lifts available for next-order model features / evidence.
     features.update(baseline_gate.cohort_features)
+    market = str(features.get("market", ""))
+    vertical = str(features.get("vertical", "food"))
+    # Slice ladder first, then baseline precision warp on that ladder.
+    slice_op = operating_point_for_slice(
+        operating_point, market=market, vertical=vertical
+    )
     decision_op = apply_precision_discount_to_operating_point(
-        operating_point,
+        slice_op,
         abuse_precision_discount=baseline_gate.abuse_precision_discount,
         fraud_precision_discount=baseline_gate.fraud_precision_discount,
         abuse_relax_points=baseline_gate.abuse_relax_points,
@@ -133,8 +172,8 @@ def score_feature_row(
         link_scores=link_scores,
         device_cluster_score=device_score,
         policy=policy,
-        market=str(features.get("market", "")),
-        vertical=str(features.get("vertical", "food")),
+        market=market,
+        vertical=vertical,
     )
     gate_items = list(gate_items) + list(baseline_gate.evidence_items)
     combined, tier = combine_scores(
@@ -143,6 +182,9 @@ def score_feature_row(
         prior,
         decision_op,
         hard_gated=hard_gated,
+        decision_score=decision_score,
+        market=market,
+        vertical=vertical,
     )
     evidence = build_evidence_pack(
         features=features,
@@ -157,18 +199,35 @@ def score_feature_row(
         market=str(features.get("market", "")),
         vertical=str(features.get("vertical", "food")),
     )
+    effect = resolve_refund_effect(
+        tier,
+        features,
+        decision_score=decision_score,
+        effect_cfg=effect_cfg,
+    )
+    budget = evaluate_refund_budget(features, budget_cfg)
+    final_effect, budget, budget_reasons = apply_budget_effect_floor(
+        effect.final_effect, budget, budget_cfg
+    )
+    effect_meta = effect.to_dict()
+    effect_meta["final_effect"] = final_effect.value
+    effect_meta["budget_floored"] = bool(budget.floored)
     reason_codes = [item.reason_code for item in evidence.items]
+    reason_codes.extend(effect.reason_codes)
+    reason_codes.extend(budget_reasons)
     return OrderRiskSnapshot(
         order_id=str(features.get("order_id", "")),
         market=str(features.get("market", "")),
         vertical=str(features.get("vertical", "")),
         abuse_score=abuse_score,
         fraud_score=fraud_score,
+        decision_score=decision_score,
         entity_scores=EntityScores(**entity_scores),
         link_scores=LinkScores(**link_scores),
         device_cluster_score=device_score,
         suggested_tier=tier,
-        refund_effect=tier_to_refund_effect(tier),
+        refund_effect=final_effect,
+        shadow_refund_effect=effect.shadow_effect,
         reason_codes=reason_codes,
         evidence_pack=evidence,
         hard_gated=hard_gated,
@@ -181,6 +240,8 @@ def score_feature_row(
         threshold_relax_points=float(baseline_gate.threshold_relax_points),
         baseline_hil_required=bool(baseline_gate.hil_required),
         baseline_gate=baseline_gate.to_dict(),
+        effect_decision=effect_meta,
+        refund_budget=budget.to_dict(),
     )
 
 
@@ -252,10 +313,23 @@ def refresh_order(
     event: LifecycleEvent | str | None = None,
     policy: dict[str, Any] | None = None,
     operating_point: dict[str, Any] | None = None,
+    device_sdk_event: dict[str, Any] | None = None,
+    vision_sdk_event: dict[str, Any] | None = None,
 ) -> OrderRiskSnapshot:
+    from refund_abuse_risk.config import load_sdk_ingest
+    from refund_abuse_risk.integrations.sdk_ingest import attach_sdk_signals
+
     _ = event  # lifecycle marker for callers/logging; features use current order row
-    feat = build_order_feature_row(order, history, devices, users=users)
-    row = {**order, **feat}
+    order_in = dict(order)
+    if device_sdk_event is not None or vision_sdk_event is not None:
+        order_in = attach_sdk_signals(
+            order_in,
+            device_event=device_sdk_event,
+            vision_event=vision_sdk_event,
+            cfg=load_sdk_ingest(),
+        )
+    feat = build_order_feature_row(order_in, history, devices, users=users)
+    row = {**order_in, **feat}
     # Lifecycle refresh: only settled events write baselines (config settled_statuses).
     if event is not None:
         row["lifecycle_event"] = event.value if isinstance(event, LifecycleEvent) else str(event)
@@ -267,7 +341,7 @@ def refresh_order(
         baseline_store=cache.baseline_store,
         cohort_store=cache.cohort_store,
     )
-    cache.put(snap, order)
+    cache.put(snap, order_in)
     return snap
 
 

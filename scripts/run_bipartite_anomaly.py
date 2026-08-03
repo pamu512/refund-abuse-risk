@@ -31,6 +31,12 @@ def main() -> None:
     )
     parser.add_argument("--as-of-date", default=None)
     parser.add_argument("--json-summary", action="store_true")
+    parser.add_argument(
+        "--mint-weak-labels",
+        type=Path,
+        default=None,
+        help="Orders CSV to mint discovery weak labels into (writes alongside with .discovery.csv)",
+    )
     args = parser.parse_args()
 
     cfg = load_bipartite_anomaly()
@@ -58,6 +64,15 @@ def main() -> None:
         "edge_path": str(edge_path),
         "node_path": str(node_path),
     }
+    if args.mint_weak_labels is not None:
+        from refund_abuse_risk.labels.discovery import mint_weak_labels_from_uv_anomaly
+
+        orders = pd.read_csv(args.mint_weak_labels)
+        labeled = mint_weak_labels_from_uv_anomaly(orders, history, cfg)
+        out_path = args.mint_weak_labels.with_suffix(".discovery.csv")
+        labeled.to_csv(out_path, index=False)
+        summary["discovery_minted"] = int(labeled.attrs.get("discovery_minted", 0))
+        summary["discovery_path"] = str(out_path)
     if args.json_summary:
         print(json.dumps(summary, indent=2))
     else:
