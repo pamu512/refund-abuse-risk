@@ -36,8 +36,14 @@ def _synth_dispositions(orders: pd.DataFrame, rng: np.random.Generator) -> pd.Da
         lag = int(rng.integers(7, 21))
         disp_ts = (event + pd.Timedelta(days=lag)).isoformat()
         if src == "proven" or (fraud and rng.random() < 0.55):
-            # Orthogonal hard truth: some proven via chargeback, some investigator.
-            disp = "chargeback_lost" if rng.random() < 0.45 else "investigator_confirmed_fraud"
+            # Orthogonal hard truth: chargeback / bank dispute / investigator.
+            r = rng.random()
+            if r < 0.35:
+                disp = "chargeback_lost"
+            elif r < 0.55:
+                disp = "bank_dispute_lost"
+            else:
+                disp = "investigator_confirmed_fraud"
         elif fraud:
             disp = "manual_denied_fraud"
         elif abuse and rng.random() < 0.7:
@@ -57,7 +63,12 @@ def _qa_sample(dispositions: pd.DataFrame, rng: np.random.Generator, n: int = 50
         return dispositions
     hard = dispositions[
         dispositions["disposition"].isin(
-            ["investigator_confirmed_fraud", "chargeback_lost", "manual_denied_fraud"]
+            [
+                "investigator_confirmed_fraud",
+                "chargeback_lost",
+                "bank_dispute_lost",
+                "manual_denied_fraud",
+            ]
         )
     ]
     soft = dispositions[~dispositions.index.isin(hard.index)]
@@ -163,6 +174,7 @@ def main() -> None:
         "orders": int(len(orders)),
         "dispositions": int(len(dispositions)),
         "chargeback_lost": int((dispositions["disposition"] == "chargeback_lost").sum()),
+        "bank_dispute_lost": int((dispositions["disposition"] == "bank_dispute_lost").sum()),
         "weak_policy_auto_grant": int(
             (dispositions["disposition"] == "weak_policy_auto_grant").sum()
         ),
