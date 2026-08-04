@@ -360,3 +360,22 @@ def recommend_decision_thresholds_by_slice(
         rec["vertical"] = str(vertical)
         out[key] = rec
     return out
+
+
+def recommended_overlays_from_slices(recommended_by_slice: dict[str, Any]) -> list[dict[str, Any]]:
+    """Promote-eligible costed ladders → operating_point overlay shape."""
+    overlays: list[dict[str, Any]] = []
+    for rec in recommended_by_slice.values():
+        if not rec.get("promote_eligible", rec.get("ok")) or rec.get("thin_slice"):
+            continue
+        overlays.append(
+            {
+                "market": rec["market"],
+                "vertical": rec["vertical"],
+                "soft_friction": round(float(rec["soft_friction"]), 2),
+                "hold_review": round(float(rec["hold_review"]), 2),
+                "auto_deny": round(float(rec["auto_deny"]), 2),
+            }
+        )
+    return overlays
+

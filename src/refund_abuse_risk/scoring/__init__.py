@@ -9,6 +9,7 @@ from refund_abuse_risk.scoring.decision import (
     operating_point_for_slice,
     recommend_decision_thresholds,
     recommend_decision_thresholds_by_slice,
+    recommended_overlays_from_slices,
     resolve_decision_thresholds,
     tier_from_decision_score,
 )
@@ -48,6 +49,7 @@ __all__ = [
     "SliceCalibrator",
     "recommend_decision_thresholds",
     "recommend_decision_thresholds_by_slice",
+    "recommended_overlays_from_slices",
     "recommend_head_thresholds",
     "resolve_decision_thresholds",
     "tier_for_score",

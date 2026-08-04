@@ -1,0 +1,47 @@
+# Policy priors by vertical (research-seeded). Used as model features, not hard gates.
+# Market overlays win over vertical defaults (first match).
+
+defaults:
+  food:
+    claim_window_hours: 36
+    photo_prior: 0.35
+    remedy_cash_bias: 0.40
+    returns_allowed: 0
+  qcommerce:
+    claim_window_hours: 18
+    photo_prior: 0.55
+    remedy_cash_bias: 0.45
+    returns_allowed: 0
+  grocery:
+    claim_window_hours: 72
+    photo_prior: 0.65
+    remedy_cash_bias: 0.55
+    returns_allowed: 0
+
+# Optional market × vertical overrides (first match wins).
+overlays:
+  - market: US
+    vertical: food
+    claim_window_hours: 24
+    photo_prior: 0.40
+    remedy_cash_bias: 0.70  # CA AB 578-style cash pressure
+    returns_allowed: 0
+  - market: IN
+    vertical: qcommerce
+    claim_window_hours: 24
+    photo_prior: 0.60
+    remedy_cash_bias: 0.50
+    returns_allowed: 0
+  - market: US
+    vertical: qcommerce
+    claim_window_hours: 12  # Gopuff-tight style
+    photo_prior: 0.50
+    remedy_cash_bias: 0.45
+    returns_allowed: 0
+
+# Fallback when vertical unknown.
+fallback:
+  claim_window_hours: 36
+  photo_prior: 0.40
+  remedy_cash_bias: 0.45
+  returns_allowed: 0

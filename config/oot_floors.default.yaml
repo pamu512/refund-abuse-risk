@@ -1,0 +1,9 @@
+# Floors for scripts/eval_oot_pack.py (labeled holdout honesty).
+# Pack manifest may override any key under floors.
+
+min_holdout_n: 30
+min_proven_positives: 3
+min_fraud_proven_average_precision: 0.20
+min_fraud_proven_precision_at_soft: 0.10
+max_decision_ece: 0.35
+require_serve_path: true

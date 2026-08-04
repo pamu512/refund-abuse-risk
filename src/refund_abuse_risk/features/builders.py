@@ -6,6 +6,7 @@ from typing import Any
 import pandas as pd
 
 from refund_abuse_risk.baselines.store import BASELINE_FEATURE_KINDS, zero_baseline_features
+from refund_abuse_risk.features.policy_priors import POLICY_FEATURE_COLUMNS, policy_prior_features
 from refund_abuse_risk.graph.bipartite import (
     bipartite_features_as_of,
     zero_bipartite_features,
@@ -105,6 +106,8 @@ _PLATFORM_RISK_FEATURE_COLUMNS = [
     "delivery_geofence_ok",
 ]
 
+_POLICY_FEATURE_COLUMNS = list(POLICY_FEATURE_COLUMNS)
+
 # Shared columns available on every scored row.
 FEATURE_COLUMNS: list[str] = [
     "order_amount",
@@ -159,6 +162,7 @@ FEATURE_COLUMNS: list[str] = [
     *_BASELINE_FEATURE_COLUMNS,
     *_BIPARTITE_FEATURE_COLUMNS,
     *_PLATFORM_RISK_FEATURE_COLUMNS,
+    *_POLICY_FEATURE_COLUMNS,
 ]
 
 # Abuse head: behavioral rate / claim / GMV / tenure-LTV patterns.
@@ -201,6 +205,7 @@ ABUSE_FEATURE_COLUMNS: list[str] = [
     "claim_in_app_capture",
     "pin_required",
     "pin_verified",
+    *_POLICY_FEATURE_COLUMNS,
 ]
 
 # Fraud head: graph / device collusion signals (avoids pure rate-cap identity).
@@ -240,6 +245,10 @@ FRAUD_FEATURE_COLUMNS: list[str] = [
     "pin_required",
     "pin_verified",
     "delivery_geofence_ok",
+    "policy_claim_window_hours",
+    "policy_photo_prior",
+    "policy_remedy_cash_bias",
+    "claim_window_remaining_frac",
 ]
 
 
@@ -746,6 +755,7 @@ def build_order_feature_row(
         **_zero_platform_risk_features(),
         **_device_integrity(devices, device_id, order),
         **_claim_delivery_features(order),
+        **policy_prior_features(order),
         # As-of UV bipartite (no future leakage).
         **bipartite_features_as_of(order, hist),
     }

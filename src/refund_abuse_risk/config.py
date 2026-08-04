@@ -75,6 +75,14 @@ def load_head_hyperparams(config_dir: Path | None = None) -> dict[str, Any]:
     return load_yaml((config_dir or default_config_dir()) / "head_hyperparams.default.yaml")
 
 
+def load_vertical_policy(config_dir: Path | None = None) -> dict[str, Any]:
+    return load_yaml((config_dir or default_config_dir()) / "vertical_policy.default.yaml")
+
+
+def load_feeds(config_dir: Path | None = None) -> dict[str, Any]:
+    return load_yaml((config_dir or default_config_dir()) / "feeds.default.yaml")
+
+
 def resolve_policy(
     policy: dict[str, Any],
     *,

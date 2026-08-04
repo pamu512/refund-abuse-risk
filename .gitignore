@@ -16,4 +16,9 @@ data/*.csv
 data/*.db
 data/warehouse/
 data/large/
+data/feeds/staging/
+data/feeds/warehouse/
+data/oot_packs/
+data/ops_snapshot.json
+!data/feeds/fixtures/
 examples/csv_demo/tuned_thresholds.yaml

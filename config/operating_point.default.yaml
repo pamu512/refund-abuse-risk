@@ -19,6 +19,8 @@ decision_thresholds:
   auto_deny: 75
 
 # Optional market×vertical ladders (first match wins). Empty = global only.
+# Populate via: python scripts/backtest.py --write-slice-overlays path.yaml
+# (promote-eligible slices only; thin slices skipped).
 # Example:
 #   - market: SG
 #     vertical: food
@@ -32,8 +34,8 @@ decision_threshold_overlays: []
 head_thresholds:
   target_pattern_recall: 0.98
   min_precision_at_soft: 0.15
-  # Optional $ cost ceiling on mean FP refund amount at soft (null = ungated).
-  max_fp_refund_dollars_mean: null
+  # Mean FP refund $ at soft (demo ceiling; retune from finance on live OOT).
+  max_fp_refund_dollars_mean: 25.0
   abuse_soft_friction: 35
   fraud_soft_friction: 30
   abuse_hold_review: 50
@@ -62,11 +64,17 @@ monitoring:
   max_hold_rate: 0.55
   max_live_override_rate: 0.35
   max_refund_grant_rate: 0.90
-  max_refund_dollar_per_order: null
+  # Demo $ / CS ceilings — retune from live ops_snapshot cron.
+  max_refund_dollar_per_order: 12.0
   max_cs_queue_depth: 500
-  max_shadow_override_rate: null
-  # Live feed: scripts/ingest_ops_snapshot.py → data/ops_snapshot.json (backtest merges).
-  # ops_snapshot:
-  #   cs_queue_depth: 120
-  #   refund_dollar_per_order: 8.5
-  ops_snapshot: {}
+  max_shadow_override_rate: 0.40
+  # Seeded from examples/ops_snapshot.example.json; refresh via pull_production_feeds.
+  ops_snapshot:
+    as_of: "2026-08-03T00:00:00Z"
+    source: ops_warehouse_demo
+    cs_queue_depth: 85
+    refund_dollar_per_order: 4.2
+    hold_rate: 0.18
+    live_override_rate: 0.04
+    shadow_override_rate: 0.11
+    refund_grant_rate: 0.62

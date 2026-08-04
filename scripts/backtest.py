@@ -23,6 +23,7 @@ from refund_abuse_risk.training.splits import time_based_order_split
 from refund_abuse_risk.scoring.decision import (
     recommend_decision_thresholds,
     recommend_decision_thresholds_by_slice,
+    recommended_overlays_from_slices,
 )
 from refund_abuse_risk.scoring.monitoring import (
     evaluate_monitoring_gates,
@@ -69,6 +70,12 @@ def main() -> None:
         "--write-config",
         action="store_true",
         help="With --tune, apply the bounded auto-step to operating_point (still HIL-gates large moves)",
+    )
+    parser.add_argument(
+        "--write-slice-overlays",
+        type=Path,
+        default=None,
+        help="Write promote-eligible market×vertical decision_threshold_overlays YAML fragment",
     )
     parser.add_argument(
         "--target-recall",
@@ -266,8 +273,13 @@ def main() -> None:
         },
     }
 
-    # OOT slices by market × vertical (decision score).
+    # OOT slices by market × vertical (pattern + proven honesty).
     slice_metrics: dict[str, Any] = {}
+    min_slice_n = 20
+    min_slice_proven = 3
+    max_slice_ece = (operating_point.get("monitoring") or {}).get("max_decision_ece")
+    slice_ece_ok = True
+    slice_ece_failures: list[str] = []
     for (market, vertical), grp in scored.groupby(
         [scored["market"].astype(str), scored["vertical"].astype(str)], sort=True
     ):
@@ -275,16 +287,63 @@ def main() -> None:
             (grp["abuse_label"].astype(int) >= 1) | (grp["fraud_label"].astype(int) >= 1)
         ).astype(int)
         ds = grp["decision_score"].astype(float)
+        proven_g = grp["fraud_label_source"].astype(str).str.lower().eq("proven")
+        proven_y = proven_g.astype(int)
         key = f"{market}|{vertical}"
+        # Gate on proven labels when support allows; else pattern ECE (reported either way).
+        ece_pat = expected_calibration_error(py.to_numpy(), ds.to_numpy())
+        ece_proven = expected_calibration_error(proven_y.to_numpy(), ds.to_numpy())
+        thin = len(grp) < min_slice_n or int(proven_y.sum()) < min_slice_proven
+        ece_gate = ece_proven if int(proven_y.sum()) >= min_slice_proven else ece_pat
+        ece_val = ece_gate.get("ece")
+        ece_ok = True
+        if (
+            not thin
+            and max_slice_ece is not None
+            and ece_val is not None
+            and float(ece_val) > float(max_slice_ece)
+        ):
+            ece_ok = False
+            slice_ece_ok = False
+            slice_ece_failures.append(key)
         slice_metrics[key] = {
             "n": int(len(grp)),
+            "n_proven": int(proven_y.sum()),
+            "thin_slice": bool(thin),
             "positive_rate": float(py.mean()) if len(py) else 0.0,
             "roc_auc": _safe_auc(py.tolist(), (ds / 100.0).tolist()),
             "average_precision": _safe_ap(py.tolist(), (ds / 100.0).tolist()),
             "recall_at_soft": recall_at_threshold(py.to_numpy(), ds.to_numpy(), soft_d),
             "precision_at_soft": precision_at_threshold(py.to_numpy(), ds.to_numpy(), soft_d),
+            "fraud_proven_average_precision": _safe_ap(
+                proven_y.tolist(), (ds / 100.0).tolist()
+            ),
+            "fraud_proven_precision_at_soft": precision_at_threshold(
+                proven_y.to_numpy(), ds.to_numpy(), soft_d
+            ),
+            "decision_ece": ece_pat.get("ece"),
+            "decision_ece_proven": ece_proven.get("ece"),
+            "ece_gate": ece_val,
+            "ece_ok": bool(ece_ok),
         }
     metrics["slices"] = slice_metrics
+    _n_total = int(len(scored))
+    _n_thin = int(sum(int(v["n"]) for v in slice_metrics.values() if v.get("thin_slice")))
+    slice_thin_mass = float(_n_thin / _n_total) if _n_total else 0.0
+    recommended_overlays = recommended_overlays_from_slices(recommended_by_slice)
+    metrics["recommended_overlays"] = recommended_overlays
+    metrics["recommended_by_slice"] = {
+        k: {
+            "ok": v.get("ok"),
+            "promote_eligible": v.get("promote_eligible"),
+            "thin_slice": v.get("thin_slice"),
+            "n": v.get("n"),
+            "soft_friction": v.get("soft_friction"),
+            "hold_review": v.get("hold_review"),
+            "auto_deny": v.get("auto_deny"),
+        }
+        for k, v in recommended_by_slice.items()
+    }
 
     # Calibration / drift (train scores vs holdout) — ECE on decision, PSI train→test.
     # Ops gates finalized after dual-run effects below.
@@ -406,12 +465,35 @@ def main() -> None:
     )
     metrics["monitoring"]["ops"] = ops
     metrics["monitoring"]["gate"] = mon_gate
-    metrics["monitoring"]["ok"] = bool(mon_gate.get("ok", True))
-    metrics["honesty"]["monitoring_ok"] = bool(mon_gate.get("ok", True))
-    metrics["honesty"]["promote_ok"] = bool(
-        recommended.get("ok") and mon_gate.get("ok", True)
-    )
+    metrics["monitoring"]["slices"] = {
+        "ok": bool(slice_ece_ok),
+        "max_decision_ece": max_slice_ece,
+        "failures": slice_ece_failures,
+        "min_slice_n": min_slice_n,
+        "min_slice_proven": min_slice_proven,
+        "thin_slice_mass": slice_thin_mass,
+        "n_thin_rows": _n_thin,
+        "n_rows": _n_total,
+    }
+    monitoring_ok = bool(mon_gate.get("ok", True)) and bool(slice_ece_ok)
+    metrics["monitoring"]["ok"] = monitoring_ok
+    metrics["honesty"]["monitoring_ok"] = monitoring_ok
+    metrics["honesty"]["slices_ece_ok"] = bool(slice_ece_ok)
+    metrics["honesty"]["promote_ok"] = bool(recommended.get("ok") and monitoring_ok)
     metrics["honesty"]["ops_gate"] = True
+
+    if args.write_slice_overlays is not None:
+        out_path = Path(args.write_slice_overlays)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(
+            yaml.safe_dump(
+                {"decision_threshold_overlays": recommended_overlays},
+                sort_keys=False,
+                default_flow_style=False,
+            ),
+            encoding="utf-8",
+        )
+        metrics["slice_overlays_wrote"] = str(out_path)
 
     if args.tune:
         decision_proposal = {
@@ -441,27 +523,10 @@ def main() -> None:
             operating_point_path=OP_PATH,
             apply=bool(args.write_config) and bool(recommended_heads.get("ok")),
         )
-        if (
-            args.write_config
-            and recommended_decision.get("ok")
-            and mon_gate.get("ok", True)
-        ):
+        if args.write_config and recommended_decision.get("ok") and monitoring_ok:
             op_live = yaml.safe_load(OP_PATH.read_text(encoding="utf-8")) or {}
             op_live["decision_thresholds"] = decision_proposal
-            overlays = []
-            for _key, rec in recommended_by_slice.items():
-                if not rec.get("promote_eligible", rec.get("ok")) or rec.get("thin_slice"):
-                    continue
-                overlays.append(
-                    {
-                        "market": rec["market"],
-                        "vertical": rec["vertical"],
-                        "soft_friction": round(float(rec["soft_friction"]), 2),
-                        "hold_review": round(float(rec["hold_review"]), 2),
-                        "auto_deny": round(float(rec["auto_deny"]), 2),
-                    }
-                )
-            op_live["decision_threshold_overlays"] = overlays
+            op_live["decision_threshold_overlays"] = recommended_overlays
             OP_PATH.write_text(
                 yaml.safe_dump(op_live, sort_keys=False, default_flow_style=False),
                 encoding="utf-8",
@@ -510,7 +575,7 @@ def main() -> None:
         metrics["tuned_head_thresholds"] = head
         metrics["tuner_decision"] = decision.to_dict()
         if args.write_config:
-            promote_ok = bool(recommended_decision.get("ok", False) and mon_gate.get("ok", True))
+            promote_ok = bool(recommended_decision.get("ok", False) and monitoring_ok)
             if not promote_ok:
                 metrics["promoted_to"] = None
                 reasons = []
@@ -520,6 +585,10 @@ def main() -> None:
                     )
                 if not mon_gate.get("ok", True):
                     reasons.extend(mon_gate.get("reasons") or ["monitoring gate failed"])
+                if not slice_ece_ok:
+                    reasons.append(
+                        "slice ECE failed: " + ",".join(slice_ece_failures or ["unknown"])
+                    )
                 metrics["promote_blocked"] = "; ".join(reasons)
             else:
                 metrics["promoted_to"] = str(OP_PATH)

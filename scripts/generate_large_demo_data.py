@@ -257,6 +257,15 @@ def main() -> None:
         else:
             claim_reasons.append("")
 
+    # Claim clock after delivery so policy window features are non-zero.
+    claim_ts = []
+    for i, ts in enumerate(order_ts):
+        if claim_reasons[i]:
+            delay_h = float(rng.uniform(0.5, 20.0))
+            claim_ts.append(pd.Timestamp(ts) + pd.Timedelta(hours=delay_h))
+        else:
+            claim_ts.append(pd.Timestamp(ts) + pd.Timedelta(hours=float(rng.uniform(0.1, 2.0))))
+
     orders = pd.DataFrame(
         {
             "order_id": order_ids,
@@ -270,6 +279,8 @@ def main() -> None:
             "status": "delivered",
             "claim_reason": claim_reasons,
             "event_ts": order_ts,
+            "delivered_ts": order_ts,
+            "claim_ts": claim_ts,
             "abuse_label": abuse_label,
             "abuse_label_weak": abuse_weak,
             "fraud_label": fraud_label,

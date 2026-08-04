@@ -35,6 +35,11 @@ def apply_dispositions_to_orders(
     for col in LABEL_COLS:
         if col not in out.columns:
             out[col] = 0 if col != "fraud_label_source" else ""
+    # CSV read of empty sources becomes float64 NaN — force object before patches.
+    out["fraud_label_source"] = (
+        out["fraud_label_source"].astype("object").where(out["fraud_label_source"].notna(), "")
+    )
+    out["fraud_label_source"] = out["fraud_label_source"].astype(str).replace({"nan": "", "None": ""})
     if dispositions is None or dispositions.empty or "order_id" not in dispositions.columns:
         out.attrs["dispositions_applied"] = 0
         out.attrs["dispositions_skipped_lag"] = 0

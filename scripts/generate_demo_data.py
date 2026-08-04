@@ -529,6 +529,12 @@ def main() -> None:
     devices_df.loc[farm, "is_emulator"] = 1
 
     orders_df = pd.DataFrame(order_rows)
+    _ets = pd.to_datetime(orders_df["event_ts"], utc=True)
+    orders_df["delivered_ts"] = _ets
+    _has_claim = orders_df["claim_reason"].astype(str).str.len().gt(0)
+    orders_df["claim_ts"] = _ets + pd.to_timedelta(
+        _has_claim.map({True: 6, False: 1}), unit="h"
+    )
     for col, default in (
         ("customer_courier_same_device", 0),
         ("claim_has_image", 0),

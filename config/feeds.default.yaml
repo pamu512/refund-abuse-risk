@@ -1,0 +1,41 @@
+# Hybrid production feeds: local fixture dirs (default).
+# Warehouse sqlite profile: config/feeds.warehouse.yaml
+# Runner: scripts/pull_production_feeds.py [--config ...]
+
+version: "0.1.0"
+stage_root: data/feeds/staging
+orders_path: data/orders.csv
+orders_labeled_out: data/orders.labeled.csv
+ops_sidecar: data/ops_snapshot.json
+
+feeds:
+  dispositions:
+    enabled: true
+    source:
+      type: local_dir
+      uri: data/feeds/fixtures/dispositions
+      glob: "*.csv"
+    required_columns: [order_id, disposition, disposition_ts]
+    apply:
+      kind: dispositions
+      as_of: null
+
+  sdk_events:
+    enabled: true
+    source:
+      type: local_dir
+      uri: data/feeds/fixtures/sdk_events
+      glob: "*.jsonl"
+    required_columns: [order_id]
+    apply:
+      kind: sdk_events
+
+  ops_snapshot:
+    enabled: true
+    source:
+      type: local_dir
+      uri: data/feeds/fixtures/ops_snapshot
+      glob: "*.json"
+    required_columns: []
+    apply:
+      kind: ops_snapshot

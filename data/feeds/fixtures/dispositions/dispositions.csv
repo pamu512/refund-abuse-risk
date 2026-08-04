@@ -1,0 +1,7 @@
+order_id,disposition,disposition_ts
+O-FRAUD-0,investigator_confirmed_fraud,2026-08-06T00:00:00+00:00
+O-WEAK-0,weak_policy_auto_grant,2026-08-02T00:00:00+00:00
+O-BURN-0,manual_denied_abuse,2026-08-05T00:00:00+00:00
+O-INT-0,manual_denied_fraud,2026-08-06T00:00:00+00:00
+O-CLEAN-0,investigator_cleared,2026-08-03T00:00:00+00:00
+O-ABUSE-0,manual_denied_abuse,2026-07-27T02:00:00+00:00

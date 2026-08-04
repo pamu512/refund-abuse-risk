@@ -3,6 +3,7 @@ from refund_abuse_risk.integrations.device_vision import (
     adapt_device_intelligence,
     merge_platform_signals,
 )
+from refund_abuse_risk.integrations.feeds import load_feeds_config, run_feeds
 from refund_abuse_risk.integrations.ops_ingest import (
     apply_ops_snapshot_to_operating_point,
     load_ops_snapshot_file,
@@ -23,9 +24,11 @@ __all__ = [
     "apply_sdk_signals_to_orders",
     "attach_sdk_signals",
     "classify_source",
+    "load_feeds_config",
     "load_ops_snapshot_file",
     "merge_ops_snapshot",
     "merge_platform_signals",
     "normalize_ops_snapshot",
     "normalize_sdk_event",
+    "run_feeds",
 ]

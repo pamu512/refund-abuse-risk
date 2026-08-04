@@ -1,0 +1,49 @@
+# Warehouse-shaped feeds (sqlite demo DB). Seed: scripts/seed_feed_fixtures.py --with-warehouse
+# Usage: python scripts/pull_production_feeds.py --config config/feeds.warehouse.yaml
+
+version: "0.1.0"
+stage_root: data/feeds/staging
+orders_path: data/orders.csv
+orders_labeled_out: data/orders.labeled.csv
+ops_sidecar: data/ops_snapshot.json
+
+feeds:
+  dispositions:
+    enabled: true
+    source:
+      type: sqlite
+      uri: data/feeds/warehouse/demo.db
+      query: >
+        SELECT order_id, disposition, disposition_ts
+        FROM dispositions
+        ORDER BY disposition_ts
+      format: csv
+    required_columns: [order_id, disposition, disposition_ts]
+    apply:
+      kind: dispositions
+
+  sdk_events:
+    enabled: true
+    source:
+      type: local_dir
+      uri: data/feeds/fixtures/sdk_events
+      glob: "*.jsonl"
+    required_columns: [order_id]
+    apply:
+      kind: sdk_events
+
+  ops_snapshot:
+    enabled: true
+    source:
+      type: sqlite
+      uri: data/feeds/warehouse/demo.db
+      query: >
+        SELECT hold_rate, live_override_rate, shadow_override_rate,
+               refund_grant_rate, refund_dollar_per_order, cs_queue_depth
+        FROM ops_metrics
+        ORDER BY as_of DESC
+        LIMIT 1
+      format: json
+    required_columns: []
+    apply:
+      kind: ops_snapshot

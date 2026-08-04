@@ -77,6 +77,8 @@ orders + history + devices + users
 | **sdk events** | JSONL/JSON/CSV envelopes → `scripts/ingest_sdk_signals.py` (confidence-gated device/vision); claim-path via `refresh_order(..., device_sdk_event=, vision_sdk_event=)` |
 | **ops snapshot** | Live CS/refund$/override feed → `scripts/ingest_ops_snapshot.py` → `data/ops_snapshot.json` (merged into promote gate) |
 | **closed-loop labels** | `scripts/generate_closed_loop_labels.py` → dispositions / chargebacks / QA sample / SDK; serve-path `train_model.py` loads via `load_training_orders` (prefer `orders.labeled.csv` + SDK overlay; `--no-closed-loop` to skip). One-shot: `scripts/refresh_train_bundle.py` |
+| **production feeds** | Hybrid pull→apply: `config/feeds.default.yaml` (`local_dir`) or `config/feeds.warehouse.yaml` (`sqlite`). Seed: `scripts/seed_feed_fixtures.py --with-warehouse`. Runner: `scripts/pull_production_feeds.py` (`--dry-run` / `--stage-only`) |
+| **labeled OOT packs** | `scripts/seed_oot_pack.py` → `data/oot_packs/<id>/`; floors in `config/oot_floors.default.yaml`; eval: `scripts/eval_oot_pack.py` (serve-path + time holdout; exits 1 on floor fail) |
 | **dispositions** | `order_id`, `disposition`, `disposition_ts` → label feedback via `scripts/ingest_dispositions.py` |
 
 Labels for training: `abuse_label`, `fraud_label`, `fraud_label_source` (`proven` / `proxy`), `strong_fraud_label`, `weak_policy_negative`, `abuse_label_weak`.
@@ -99,6 +101,10 @@ python scripts/generate_large_demo_data.py --rows 500000   # → data/large/ (+ 
 python scripts/train_model.py --feature-source serve --max-rows 5000 --passes 4
 # Or regenerate labels + train:
 # python scripts/refresh_train_bundle.py --max-orders 8000 --max-rows 2000
+# Feeds + OOT honesty (A++ thin close):
+python scripts/seed_feed_fixtures.py --with-warehouse
+python scripts/pull_production_feeds.py --config config/feeds.warehouse.yaml --dry-run
+python scripts/seed_oot_pack.py && python scripts/eval_oot_pack.py
 pytest -q
 python -m examples.csv_demo
 python scripts/backtest.py
@@ -107,6 +113,8 @@ python scripts/run_tuner.py                    # auto-step ≤ max_abs_delta; qu
 python scripts/run_tuner.py --list-pending
 python scripts/run_tuner.py --approve <id>     # human approves full move
 ```
+
+Live cutover (warehouse URIs, prod OOT packs): see [`docs/CUTOVER.md`](docs/CUTOVER.md).
 
 Demo prints sample snapshots; JSON lands in `examples/csv_demo/out.json`.
 
@@ -146,7 +154,7 @@ Snapshots include `refund_effect` (`refund_auto_grant` → `refund_step_up` → 
 
 **Honesty (Phase 1):** proxy mint features held out of the fraud head; baseline/cohort lifts are gate-only; soft thresholds are costed (`min_precision_at_soft`); promote refuses soft-floor rewrites; hard gates use `prior_strong_fraud` (not same-order labels); backtest primary fraud metric is **proven-only**; primary holdout is **time-OOT** (`--oot-days`).
 
-**Meaning (Phase 2):** `decision_mode: decision_primary` — tiers cut on stacked `decision_score`; heads are evidence. Backtest reports market×vertical slices. Dispositions honor `lag_days` (default 7) before minting labels.
+**Meaning (Phase 2):** `decision_mode: decision_primary` — tiers cut on stacked `decision_score`; heads are evidence. Backtest reports market×vertical slices (proven AP + slice ECE gate). Policy priors from `config/vertical_policy.default.yaml` (claim window / photo / cash bias) are model features. Suggest overlays via backtest `recommended_overlays` or `--write-slice-overlays`. Dispositions honor `lag_days` (default 7) before minting labels.
 
 ---
 
