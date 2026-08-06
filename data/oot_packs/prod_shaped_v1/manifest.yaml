@@ -1,0 +1,17 @@
+pack_id: prod_shaped_v1
+profile: prod_shaped
+require_dispositions: true
+floors_file: config/oot_floors.prod.yaml
+floors:
+  min_holdout_n: 100
+  min_proven_positives: 15
+  min_fraud_proven_average_precision: 0.35
+  min_fraud_proven_precision_at_soft: 0.2
+  max_decision_ece: 0.2
+  require_serve_path: true
+  max_ops_snapshot_age_hours: 24
+n_orders: 120
+n_proven_dispositions: 15
+holdout_days: 7
+notes: "Prod-shaped schema fixture with dispositions. Not production lift proof \u2014\
+  \ eval_oot_pack prod AP may fail on synth."

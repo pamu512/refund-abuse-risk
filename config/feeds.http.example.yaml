@@ -1,0 +1,32 @@
+# Example: pull feeds over HTTP (or pre-signed S3 HTTPS URLs).
+# Copy / adapt for Downstream; do not commit secrets in headers.
+
+version: "0.1.0"
+stage_root: data/feeds/staging
+orders_path: data/orders.csv
+orders_labeled_out: data/orders.labeled.csv
+ops_sidecar: data/ops_snapshot.json
+
+feeds:
+  dispositions:
+    enabled: false
+    source:
+      type: http
+      uri: https://example.invalid/feeds/dispositions.csv
+      filename: dispositions.csv
+      headers: {}
+      timeout_seconds: 60
+    required_columns: [order_id, disposition, disposition_ts]
+    apply:
+      kind: dispositions
+
+  ops_snapshot:
+    enabled: false
+    source:
+      type: s3
+      # Prefer pre-signed HTTPS (no boto3). Or s3://bucket/key with boto3 installed.
+      uri: https://example.invalid/feeds/ops_snapshot.json
+      filename: ops_snapshot.json
+    required_columns: []
+    apply:
+      kind: ops_snapshot

@@ -1,13 +1,16 @@
-"""Hybrid production feed pull → stage → apply (local_dir + sqlite; S3 later)."""
+"""Hybrid production feed pull → stage → apply (local_dir, sqlite, http, s3)."""
 
 from __future__ import annotations
 
 import json
 import shutil
 import sqlite3
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import pandas as pd
 import yaml
@@ -26,7 +29,7 @@ from refund_abuse_risk.integrations.sdk_ingest import apply_sdk_signals_to_order
 from refund_abuse_risk.labels.dispositions import apply_dispositions_to_orders
 
 ROOT = Path(__file__).resolve().parents[3]
-SUPPORTED_SOURCE_TYPES = {"local_dir", "sqlite"}
+SUPPORTED_SOURCE_TYPES = {"local_dir", "sqlite", "http", "s3"}
 
 
 def load_feeds_config(config_dir: Path | None = None) -> dict[str, Any]:
@@ -112,6 +115,102 @@ def pull_sqlite(
     return out
 
 
+def pull_http(
+    feed_name: str,
+    source: dict[str, Any],
+    *,
+    root: Path = ROOT,
+    stage_root: Path | None = None,
+) -> Path:
+    """
+    GET ``source.uri`` (http/https); write bytes to staging extract.
+
+    Optional ``headers`` map; ``filename`` overrides extract name (else from URL path).
+    """
+    uri = str(source.get("uri") or "").strip()
+    if not uri:
+        raise ValueError(f"Feed {feed_name}: http source requires uri")
+    headers = {str(k): str(v) for k, v in (source.get("headers") or {}).items()}
+    timeout = float(source.get("timeout_seconds") or 60)
+    req = urllib.request.Request(uri, headers=headers, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read()
+            content_type = str(resp.headers.get("Content-Type") or "")
+    except urllib.error.HTTPError as exc:
+        raise FileNotFoundError(
+            f"Feed {feed_name}: HTTP {exc.code} for {uri}"
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise FileNotFoundError(f"Feed {feed_name}: HTTP error for {uri}: {exc}") from exc
+
+    name = str(source.get("filename") or "").strip()
+    if not name:
+        path_name = Path(urlparse(uri).path).name or "extract.bin"
+        name = path_name
+        if "." not in name:
+            if "json" in content_type:
+                name = "extract.json"
+            elif "csv" in content_type:
+                name = "extract.csv"
+            else:
+                name = "extract.bin"
+    pull_root = stage_root or _resolve_path("data/feeds/staging", root=root)
+    out_dir = pull_root / "_pull" / feed_name
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / name
+    out.write_bytes(body)
+    return out
+
+
+def pull_s3(
+    feed_name: str,
+    source: dict[str, Any],
+    *,
+    root: Path = ROOT,
+    stage_root: Path | None = None,
+) -> Path:
+    """
+    Pull from S3.
+
+    - ``uri: s3://bucket/key`` requires optional extra ``boto3`` (pip install boto3)
+    - ``uri: https://...`` (pre-signed or public) delegates to ``pull_http``
+    """
+    uri = str(source.get("uri") or "").strip()
+    if not uri:
+        raise ValueError(f"Feed {feed_name}: s3 source requires uri")
+    if uri.startswith("http://") or uri.startswith("https://"):
+        return pull_http(feed_name, source, root=root, stage_root=stage_root)
+    if not uri.startswith("s3://"):
+        raise ValueError(f"Feed {feed_name}: s3 uri must be s3:// or https:// (got {uri!r})")
+
+    try:
+        import boto3  # type: ignore
+    except ImportError as exc:
+        raise NotImplementedError(
+            f"Feed {feed_name}: s3:// URIs require boto3 "
+            "(pip install boto3) or use a pre-signed https:// uri"
+        ) from exc
+
+    parsed = urlparse(uri)
+    bucket = parsed.netloc
+    key = parsed.path.lstrip("/")
+    if not bucket or not key:
+        raise ValueError(f"Feed {feed_name}: invalid s3 uri {uri!r}")
+    region = source.get("region")
+    client_kw: dict[str, Any] = {}
+    if region:
+        client_kw["region_name"] = str(region)
+    client = boto3.client("s3", **client_kw)
+    pull_root = stage_root or _resolve_path("data/feeds/staging", root=root)
+    out_dir = pull_root / "_pull" / feed_name
+    out_dir.mkdir(parents=True, exist_ok=True)
+    name = str(source.get("filename") or Path(key).name or "extract.bin")
+    out = out_dir / name
+    client.download_file(bucket, key, str(out))
+    return out
+
+
 def pull_feed(
     feed_name: str,
     feed_cfg: dict[str, Any],
@@ -125,6 +224,10 @@ def pull_feed(
         return pull_local_dir(source, root=root)
     if stype == "sqlite":
         return pull_sqlite(feed_name, source, root=root, stage_root=stage_root)
+    if stype == "http":
+        return pull_http(feed_name, source, root=root, stage_root=stage_root)
+    if stype == "s3":
+        return pull_s3(feed_name, source, root=root, stage_root=stage_root)
     raise NotImplementedError(
         f"Feed {feed_name}: source.type={stype!r} not implemented yet "
         f"(supported: {sorted(SUPPORTED_SOURCE_TYPES)})."

@@ -60,6 +60,8 @@ entity_risk_change_delta: 10.0
 monitoring:
   max_decision_ece: 0.20
   max_psi_train_test: 0.35
+  # Prod: set max_ops_snapshot_age_hours: 24 and refresh ops_snapshot daily.
+  # max_ops_snapshot_age_hours: 24
   # Ops proxies from dual-run (CS / overrides / refund $). Null ceiling = ungated.
   max_hold_rate: 0.55
   max_live_override_rate: 0.35

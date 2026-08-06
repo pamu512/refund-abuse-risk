@@ -1,0 +1,11 @@
+# Strict floors for production-shaped OOT packs (not demo CI).
+# Schema validation uses these minima; full eval_oot_pack may still fail on synth AP.
+
+min_holdout_n: 100
+min_proven_positives: 15
+min_fraud_proven_average_precision: 0.35
+min_fraud_proven_precision_at_soft: 0.20
+max_decision_ece: 0.20
+require_serve_path: true
+# Ops freshness (also set monitoring.max_ops_snapshot_age_hours on live OP).
+max_ops_snapshot_age_hours: 24
