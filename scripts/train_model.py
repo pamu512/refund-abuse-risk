@@ -99,6 +99,17 @@ def main() -> None:
         action="store_true",
         help="Use raw orders.csv only (skip labeled/dispositions/SDK overlays)",
     )
+    parser.add_argument(
+        "--require-dispositions",
+        action="store_true",
+        help="Fail if training orders lack proven disposition mass (prod path)",
+    )
+    parser.add_argument(
+        "--min-train-proven",
+        type=int,
+        default=1,
+        help="Minimum proven-labeled rows when --require-dispositions",
+    )
     args = parser.parse_args()
 
     t0 = time.time()
@@ -118,10 +129,18 @@ def main() -> None:
 
     if args.feature_source == "serve":
         if args.no_closed_loop:
+            if args.require_dispositions:
+                raise SystemExit(
+                    "--require-dispositions is incompatible with --no-closed-loop"
+                )
             orders = pd.read_csv(args.data_dir / "orders.csv")
             closed_loop_stats = {"orders_source": str(args.data_dir / "orders.csv"), "disabled": True}
         else:
-            orders, closed_loop_stats = load_training_orders(args.data_dir)
+            orders, closed_loop_stats = load_training_orders(
+                args.data_dir,
+                require_dispositions=bool(args.require_dispositions),
+                min_train_proven=int(args.min_train_proven),
+            )
         devices = pd.read_csv(args.data_dir / "devices.csv")
         users = (
             pd.read_csv(args.data_dir / "users.csv")

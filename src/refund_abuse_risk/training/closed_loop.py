@@ -12,6 +12,31 @@ from refund_abuse_risk.integrations.sdk_ingest import apply_sdk_signals_to_order
 from refund_abuse_risk.labels.dispositions import apply_dispositions_to_orders
 
 
+def assert_dispositions_present(
+    orders: pd.DataFrame,
+    stats: dict[str, Any],
+    *,
+    min_proven: int = 1,
+) -> None:
+    """
+    Raise ValueError when training data lacks disposition/proven mass.
+
+    Used by ``--require-dispositions`` so synth-only paths cannot silently train.
+    Accepts pre-baked ``orders.labeled.csv`` or applied ``dispositions.csv``.
+    """
+    proven_n = 0
+    if "fraud_label_source" in orders.columns and len(orders):
+        proven_n = int(
+            (orders["fraud_label_source"].astype(str).str.lower() == "proven").sum()
+        )
+    stats["proven_count"] = proven_n
+    if proven_n < int(min_proven):
+        raise ValueError(
+            f"require_dispositions: proven_count={proven_n} < min_proven={min_proven} "
+            f"(source={stats.get('orders_source')})"
+        )
+
+
 def load_training_orders(
     data_dir: Path,
     *,
@@ -19,6 +44,8 @@ def load_training_orders(
     apply_dispositions: bool = True,
     apply_sdk: bool = True,
     as_of: str | None = None,
+    require_dispositions: bool = False,
+    min_train_proven: int = 1,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
     Resolve the best training orders table under ``data_dir``.
@@ -111,6 +138,12 @@ def load_training_orders(
         stats["weak_policy_negative_rate"] = float(
             orders["weak_policy_negative"].astype(float).fillna(0).ge(1).mean()
         )
+    if "fraud_label_source" in orders.columns and len(orders):
+        stats["proven_count"] = int(
+            (orders["fraud_label_source"].astype(str).str.lower() == "proven").sum()
+        )
+    if require_dispositions:
+        assert_dispositions_present(orders, stats, min_proven=min_train_proven)
     return orders, stats
 
 

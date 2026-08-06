@@ -11,7 +11,7 @@ It turns order, history, device, and closed-loop label feeds into:
 
 **Design goal:** catch recurring behavioral patterns at high recall on labeled pattern mass. Do not chase novel edge cases with hard-coded rules.
 
-**Status:** A++ thin closed in-repo. Live warehouse URIs / prod OOT packs = Downstream cutover — see [`docs/CUTOVER.md`](docs/CUTOVER.md).
+**Status (2026-08-06):** **A+** honesty toolkit — **not A++**. Prod readiness includes A+C contracts, HTTP/S3 feed drivers, `ops.overnight.prod.yaml`, and minimal `serve_api.py`. Live warehouse URIs / real chargebacks still Downstream — [`docs/CUTOVER.md`](docs/CUTOVER.md).
 
 ---
 
@@ -20,6 +20,8 @@ It turns order, history, device, and closed-loop label feeds into:
 | Doc | Use when |
 |---|---|
 | **[Ops manual](docs/MANUAL.md)** | How to run, minimum requirements, how to tune |
+| **[Architecture](docs/ARCHITECTURE.md)** | Package map, train/serve paths, extension points |
+| **[Ops runbook](docs/OPS_RUNBOOK.md)** | Overnight profile, promote tree, health checks |
 | [CUTOVER.md](docs/CUTOVER.md) | Point feeds at live DBs / prod OOT packs |
 | [Design spec](docs/superpowers/specs/2026-08-02-refund-abuse-risk-design.md) | Product/design decisions |
 

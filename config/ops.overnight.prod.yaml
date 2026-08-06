@@ -1,0 +1,87 @@
+# Production overnight profile — Downstream cutover entrypoint.
+# Usage: OPS_OVERNIGHT_PROFILE=config/ops.overnight.prod.yaml ./scripts/ops_overnight.sh
+# Or: python scripts/ops_overnight.py --profile config/ops.overnight.prod.yaml --require-promote
+
+version: 1
+require_promote: true
+abort_on_step_failure: true
+
+paths:
+  feeds_config: config/feeds.warehouse.yaml
+  data_dir: data
+  model_out: models/two_head_prod.joblib
+  oot_pack: data/oot_packs/prod_shaped_v1
+  overlays_out: examples/csv_demo/slice_overlays.yaml
+  floors: config/oot_floors.prod.yaml
+
+steps:
+  - id: validate_oot_schema
+    argv:
+      - python
+      - scripts/validate_oot_pack.py
+      - --pack-dir
+      - "{oot_pack}"
+      - --floors
+      - "{floors}"
+
+  - id: pull_feeds
+    argv:
+      - python
+      - scripts/pull_production_feeds.py
+      - --config
+      - "{feeds_config}"
+
+  - id: train
+    argv:
+      - python
+      - scripts/train_model.py
+      - --feature-source
+      - serve
+      - --data-dir
+      - "{data_dir}"
+      - --max-rows
+      - "5000"
+      - --passes
+      - "4"
+      - --oot-days
+      - "7"
+      - --model-out
+      - "{model_out}"
+      - --require-dispositions
+      - --min-train-proven
+      - "5"
+
+  - id: eval_oot
+    optional: true
+    argv:
+      - python
+      - scripts/eval_oot_pack.py
+      - --pack-dir
+      - "{oot_pack}"
+      - --floors
+      - "{floors}"
+    # optional: synth prod_shaped may fail AP floors; schema step above is the hard gate
+
+  - id: backtest
+    argv:
+      - python
+      - scripts/backtest.py
+      - --write-slice-overlays
+      - "{overlays_out}"
+
+  - id: promote_overlays
+    optional: true
+    when_env: PROMOTE_OVERLAYS
+    argv:
+      - python
+      - scripts/promote_overlays.py
+      - --overlays
+      - "{overlays_out}"
+      - --require-non-empty
+
+  - id: list_hil
+    argv:
+      - python
+      - scripts/run_tuner.py
+      - --list-pending
+    optional: true

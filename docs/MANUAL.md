@@ -2,7 +2,7 @@
 
 How to **use** the repo, what you **need**, and how to **tune** the model.
 
-Companion: [README.md](../README.md) · Live cutover: [CUTOVER.md](CUTOVER.md)
+Companion: [README.md](../README.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [OPS_RUNBOOK.md](OPS_RUNBOOK.md) · Live cutover: [CUTOVER.md](CUTOVER.md)
 
 ---
 
@@ -375,5 +375,14 @@ Promote checklist:
 | `seed_feed_fixtures.py` | Fixture + sqlite warehouse seed |
 | `seed_oot_pack.py` / `eval_oot_pack.py` | Labeled OOT pack + floors |
 | `ingest_dispositions.py` / `ingest_sdk_signals.py` / `ingest_ops_snapshot.py` | Single-feed ingest |
+| `ops_overnight.py` / `ops_overnight.sh` | Declarative overnight profile (`config/ops.overnight.yaml`) |
+| `validate_oot_pack.py` | Pack schema / disposition contract (not lift) |
+| `promote_overlays.py` | Apply/rollback `decision_threshold_overlays` with OP backup |
+| `seed_oot_pack.py --profile prod_shaped` | Prod-shaped fixture pack |
+| `serve_api.py` | Minimal claim-path HTTP API (`SCORE_API_TOKEN`) |
+| `ops_overnight.py --profile config/ops.overnight.prod.yaml` | Prod overnight (dispositions + promote gates) |
+
+Overnight / promote tree / config inventory: [OPS_RUNBOOK.md](OPS_RUNBOOK.md).  
+Package boundaries: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 Design history: [`docs/superpowers/specs/`](superpowers/specs/).

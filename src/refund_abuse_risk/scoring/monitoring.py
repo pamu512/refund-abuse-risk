@@ -2,9 +2,23 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 import numpy as np
+
+
+def _parse_as_of(value: Any) -> datetime | None:
+    if value is None or value == "":
+        return None
+    text = str(value).strip().replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def expected_calibration_error(
@@ -164,6 +178,30 @@ def evaluate_monitoring_gates(
         if float(value) > float(ceiling):
             ok = False
             reasons.append(f"{metric_key}={float(value):.4f} > {cfg_key}={float(ceiling)}")
+
+    max_age_h = cfg.get("max_ops_snapshot_age_hours")
+    as_of = ops.get("as_of")
+    if max_age_h is not None:
+        age_hours = None
+        parsed = _parse_as_of(as_of)
+        if parsed is None:
+            ok = False
+            reasons.append(
+                f"ops_snapshot.as_of missing/unparseable with "
+                f"max_ops_snapshot_age_hours={float(max_age_h)}"
+            )
+        else:
+            now = datetime.now(timezone.utc)
+            age_hours = (now - parsed).total_seconds() / 3600.0
+            if age_hours > float(max_age_h) + 1e-9:
+                ok = False
+                reasons.append(
+                    f"ops_snapshot_age_hours={age_hours:.2f} > "
+                    f"max_ops_snapshot_age_hours={float(max_age_h)}"
+                )
+        ops = dict(ops)
+        if age_hours is not None:
+            ops["age_hours"] = float(age_hours)
 
     return {
         "ok": ok,

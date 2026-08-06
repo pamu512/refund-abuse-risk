@@ -18,7 +18,10 @@ data/warehouse/
 data/large/
 data/feeds/staging/
 data/feeds/warehouse/
-data/oot_packs/
+data/oot_packs/**
+!data/oot_packs/prod_shaped_v1/
+!data/oot_packs/prod_shaped_v1/**
 data/ops_snapshot.json
 !data/feeds/fixtures/
 examples/csv_demo/tuned_thresholds.yaml
+config/backups/
