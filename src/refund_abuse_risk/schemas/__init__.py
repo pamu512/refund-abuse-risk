@@ -6,6 +6,7 @@ from refund_abuse_risk.schemas.models import (
     LinkScores,
     OrderRiskSnapshot,
     RefundEffect,
+    RiskChallenge,
     SuggestedTier,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "LinkScores",
     "OrderRiskSnapshot",
     "RefundEffect",
+    "RiskChallenge",
     "SuggestedTier",
 ]

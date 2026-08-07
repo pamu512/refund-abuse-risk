@@ -14,6 +14,8 @@ models/*.train_summary.json
 !data/.gitkeep
 data/*.csv
 data/*.db
+data/proposed_rules/*
+!data/proposed_rules/.gitkeep
 data/warehouse/
 data/large/
 data/feeds/staging/

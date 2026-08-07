@@ -252,13 +252,32 @@ FRAUD_FEATURE_COLUMNS: list[str] = [
 ]
 
 
+# Rate supports used inside apply_proxy_fraud_labels — hold out of fraud head with mint.
+_PROXY_MINT_SUPPORT_COLUMNS: tuple[str, ...] = (
+    "user_refund_rate_30d",
+    "user_orders_30d",
+)
+
+
 def fraud_model_feature_columns(*, exclude_proxy_mint: bool = True) -> list[str]:
     """Fraud-head columns; mint features held out by default (honesty gate)."""
     cols = list(FRAUD_FEATURE_COLUMNS)
-    if not exclude_proxy_mint:
+    if exclude_proxy_mint:
+        drop = set(PROXY_MINT_FEATURE_COLUMNS) | set(_PROXY_MINT_SUPPORT_COLUMNS)
+        cols = [c for c in cols if c not in drop]
+    else:
         for c in PROXY_MINT_FEATURE_COLUMNS:
             if c not in cols:
                 cols.append(c)
+    return cols
+
+
+def abuse_model_feature_columns(*, exclude_proxy_mint: bool = True) -> list[str]:
+    """Abuse-head columns; drop pure proxy-mint graph/device features when excluded."""
+    cols = list(ABUSE_FEATURE_COLUMNS)
+    if exclude_proxy_mint:
+        drop = set(PROXY_MINT_FEATURE_COLUMNS)
+        cols = [c for c in cols if c not in drop]
     return cols
 
 

@@ -1,4 +1,6 @@
-# Production readiness A+C Implementation Plan
+# Prod-shaped contracts + overlay promote — implementation plan
+
+> Privacy: historical filename retained for links. Internal quality ratings are private — see [docs/GRADING.md](../../GRADING.md).
 
 > **For agentic workers:** Execute task-by-task. Steps use checkbox syntax.
 
@@ -57,5 +59,5 @@
 - [x] `scripts/promote_overlays.py` backup/apply/rollback
 - [x] Tests promote/rollback/resolve
 - [x] Wire overnight env `PROMOTE_OVERLAYS`
-- [x] Docs + grade note
+- [x] Docs (capability language; no public grade claims)
 - [x] Verify: pytest subset green

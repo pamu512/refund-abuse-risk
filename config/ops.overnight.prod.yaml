@@ -13,6 +13,7 @@ paths:
   oot_pack: data/oot_packs/prod_shaped_v1
   overlays_out: examples/csv_demo/slice_overlays.yaml
   floors: config/oot_floors.prod.yaml
+  rule_ingest_config: config/rule_ingest.default.yaml
 
 steps:
   - id: validate_oot_schema
@@ -52,7 +53,6 @@ steps:
       - "5"
 
   - id: eval_oot
-    optional: true
     argv:
       - python
       - scripts/eval_oot_pack.py
@@ -60,7 +60,7 @@ steps:
       - "{oot_pack}"
       - --floors
       - "{floors}"
-    # optional: synth prod_shaped may fail AP floors; schema step above is the hard gate
+    # Hard-fail: live packs must clear prod floors. Synth fixtures will abort here — expected.
 
   - id: backtest
     argv:
@@ -68,6 +68,15 @@ steps:
       - scripts/backtest.py
       - --write-slice-overlays
       - "{overlays_out}"
+
+  - id: ingest_proposed_rules
+    optional: true
+    when_env: INGEST_PROPOSED_RULES
+    argv:
+      - python
+      - scripts/ingest_proposed_rules.py
+      - --config
+      - "{rule_ingest_config}"
 
   - id: promote_overlays
     optional: true

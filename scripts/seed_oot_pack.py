@@ -41,11 +41,13 @@ def _seed_demo(args: argparse.Namespace) -> dict:
         (ROOT / "config" / "oot_floors.default.yaml").read_text(encoding="utf-8")
     )
     if str(pack.name).startswith("demo"):
+        holdout = max(
+            10, min(int(floors.get("min_holdout_n", 30)), max(10, len(orders) // 6))
+        )
         floors = {
             **floors,
-            "min_holdout_n": max(
-                10, min(int(floors.get("min_holdout_n", 30)), max(10, len(orders) // 6))
-            ),
+            "min_pack_n": max(10, len(orders)),
+            "min_holdout_n": holdout,
             "min_proven_positives": 1,
             "min_fraud_proven_precision_at_soft": 0.05,
             "min_fraud_proven_average_precision": 0.15,
@@ -79,7 +81,10 @@ def _seed_prod_shaped(args: argparse.Namespace) -> dict:
     floors = yaml.safe_load(
         (ROOT / "config" / "oot_floors.prod.yaml").read_text(encoding="utf-8")
     )
-    min_n = max(int(floors.get("min_holdout_n", 100)), int(args.max_orders or 120))
+    min_n = max(
+        int(floors.get("min_pack_n") or floors.get("min_holdout_n", 100)),
+        int(args.max_orders or 120),
+    )
     min_proven = int(floors.get("min_proven_positives", 15))
 
     base_orders = args.data_dir / "orders.labeled.csv"

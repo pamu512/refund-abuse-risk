@@ -3,6 +3,7 @@ profile: prod_shaped
 require_dispositions: true
 floors_file: config/oot_floors.prod.yaml
 floors:
+  min_pack_n: 100
   min_holdout_n: 100
   min_proven_positives: 15
   min_fraud_proven_average_precision: 0.35

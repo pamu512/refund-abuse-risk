@@ -55,9 +55,10 @@ def validate_oot_pack(
     require_dispositions: bool | None = None,
 ) -> dict[str, Any]:
     """
-    Validate pack layout + disposition/proven contract.
+    Validate pack layout + disposition/proven contract (schema only).
 
-    Does **not** run model metrics. Full honesty eval is ``eval_oot_pack.py``.
+    Uses ``min_pack_n`` for pack size — never ``min_holdout_n`` (eval-only after
+    the time split). Does **not** measure model lift; that is ``eval_oot_pack.py``.
     """
     pack = Path(pack_dir)
     errors: list[str] = []
@@ -94,6 +95,7 @@ def validate_oot_pack(
         errors.append("missing orders.csv")
         return {
             "ok": False,
+            "schema_only": True,
             "errors": errors,
             "profile": profile,
             "n_orders": 0,
@@ -128,17 +130,27 @@ def validate_oot_pack(
     if min_proven and n_proven < min_proven:
         errors.append(f"n_proven={n_proven} < min_proven_positives={min_proven}")
 
-    min_n = int(floors.get("min_holdout_n") or 0)
-    # Schema uses pack size as proxy; full eval still checks holdout split size.
-    if min_n and len(orders) < min_n:
-        errors.append(f"n_orders={len(orders)} < min_holdout_n={min_n} (pack too small for prod floors)")
+    # Pack size ≠ holdout size. Holdout floors are enforced in eval_oot_pack after split.
+    min_pack = int(floors.get("min_pack_n") or 0)
+    if min_pack and len(orders) < min_pack:
+        errors.append(f"n_orders={len(orders)} < min_pack_n={min_pack}")
+    if "min_holdout_n" in floors and "min_pack_n" not in floors:
+        errors.append(
+            "floors.min_holdout_n set without min_pack_n "
+            "(pack schema must use min_pack_n; holdout is eval-only)"
+        )
 
     return {
         "ok": len(errors) == 0,
+        "schema_only": True,
         "errors": errors,
         "profile": profile or None,
         "n_orders": int(len(orders)),
         "n_proven": int(n_proven),
         "require_dispositions": req_disp,
-        "floors": {k: floors.get(k) for k in ("min_holdout_n", "min_proven_positives") if k in floors},
+        "floors": {
+            k: floors.get(k)
+            for k in ("min_pack_n", "min_holdout_n", "min_proven_positives")
+            if k in floors
+        },
     }

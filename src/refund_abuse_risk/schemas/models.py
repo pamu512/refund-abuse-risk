@@ -23,6 +23,15 @@ class RefundEffect(str, Enum):
     REFUND_BLOCK = "refund_block"
 
 
+class RiskChallenge(str, Enum):
+    """Uber-style graduated friction (orthogonal to refund_effect)."""
+
+    NONE = "none"
+    PAYMENT_VERIFY = "payment_verify"  # penny-drop / auth-hold confirm
+    IDENTITY_VERIFY = "identity_verify"
+    IN_APP_CAPTURE = "in_app_capture"
+
+
 class EntityScores(BaseModel):
     user: float = 0.0
     driver: float = 0.0
@@ -64,6 +73,8 @@ class OrderRiskSnapshot(BaseModel):
     suggested_tier: SuggestedTier
     refund_effect: RefundEffect = RefundEffect.REFUND_AUTO_GRANT
     shadow_refund_effect: RefundEffect | None = None
+    risk_challenge: RiskChallenge = RiskChallenge.NONE
+    shadow_risk_challenge: RiskChallenge | None = None
     reason_codes: list[str] = Field(default_factory=list)
     evidence_pack: EvidencePack = Field(default_factory=EvidencePack)
     hard_gated: bool = False

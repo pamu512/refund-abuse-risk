@@ -1,6 +1,8 @@
 # Strict floors for production-shaped OOT packs (not demo CI).
-# Schema validation uses these minima; full eval_oot_pack may still fail on synth AP.
+# Schema validation uses min_pack_n / proven; eval_oot_pack enforces min_holdout_n
+# after the time split. Synth AP may still fail — expected for the fixture.
 
+min_pack_n: 100
 min_holdout_n: 100
 min_proven_positives: 15
 min_fraud_proven_average_precision: 0.35

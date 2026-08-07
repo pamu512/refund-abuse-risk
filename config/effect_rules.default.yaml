@@ -39,3 +39,39 @@ rules:
       min_device_risk_score: 70
     effect: refund_step_up
     reason_code: EFFECT_DEVICE_RISK
+
+# P2b — Uber-style graduated challenges (orthogonal to refund_effect).
+# Tier defaults: soft→payment_verify, hold/deny→identity_verify.
+challenges_enabled: true
+challenge_rules:
+  - id: soft_payment_verify
+    mode: live
+    when:
+      tiers: [soft_friction]
+      min_decision_score: 30
+    challenge: payment_verify
+    reason_code: CHALLENGE_SOFT_PAYMENT
+
+  - id: hold_identity_verify
+    mode: live
+    when:
+      tiers: [hold_review]
+      min_decision_score: 45
+    challenge: identity_verify
+    reason_code: CHALLENGE_HOLD_IDENTITY
+
+  - id: collusion_identity_shadow
+    mode: shadow
+    when:
+      min_uv_mo_possible_collusion: 1
+      min_decision_score: 35
+    challenge: identity_verify
+    reason_code: CHALLENGE_COLLUSION_SHADOW
+
+  - id: ai_image_in_app_capture
+    mode: live
+    when:
+      min_claim_image_ai_risk: 0.75
+      tiers: [soft_friction, hold_review]
+    challenge: in_app_capture
+    reason_code: CHALLENGE_IN_APP_CAPTURE

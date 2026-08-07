@@ -8,9 +8,12 @@ abort_on_step_failure: true
 paths:
   feeds_config: config/feeds.warehouse.yaml
   data_dir: data
+  orders_csv: data/orders.csv
+  history_csv: data/history.csv
   model_out: models/two_head_overnight.joblib
   oot_pack: data/oot_packs/demo_v1
   overlays_out: examples/csv_demo/slice_overlays.yaml
+  rule_ingest_config: config/rule_ingest.default.yaml
 
 steps:
   - id: pull_feeds
@@ -48,6 +51,34 @@ steps:
     argv:
       - python
       - scripts/backtest.py
+
+  # P0: refund-rate segment anomalies → proposed rules only (never auto-enforce).
+  - id: segment_anomalies
+    optional: true
+    argv:
+      - python
+      - scripts/detect_segment_anomalies.py
+      - --orders
+      - "{orders_csv}"
+
+  # P2a: GraphBEAN-lite UV recon anomalies → proposed actions only (never auto-enforce).
+  - id: graphbean_lite
+    optional: true
+    argv:
+      - python
+      - scripts/run_graphbean_lite.py
+      - --history
+      - "{history_csv}"
+
+  # Set INGEST_PROPOSED_RULES=1 to merge proposed_rules (still needs rule_ingest.enabled).
+  - id: ingest_proposed_rules
+    optional: true
+    when_env: INGEST_PROPOSED_RULES
+    argv:
+      - python
+      - scripts/ingest_proposed_rules.py
+      - --config
+      - "{rule_ingest_config}"
 
   # Set PROMOTE_OVERLAYS=1 after backtest has written a non-empty overlays file.
   - id: promote_overlays

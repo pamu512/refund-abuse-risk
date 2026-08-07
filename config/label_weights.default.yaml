@@ -8,8 +8,9 @@ abuse_weak_positive_weight: 0.6
 # Negatives from weak-policy auto-approvals are down-weighted (not clean negatives).
 weak_policy_negative_weight: 0.3
 clean_negative_weight: 1.0
-# Equalize total positive vs negative mass after label weights (keeps relative weights inside class).
-class_balance: true
+# Equalize pos/neg mass after provenance weights. Default OFF — fights calibration /
+# proven vs proxy weighting (audit H2). Opt in only for extreme imbalance experiments.
+class_balance: false
 
 # P0 discovery honesty — unsupervised labels must not dominate training.
 discovery:
@@ -34,5 +35,6 @@ proxy_rules:
   # Integrity path (SHIELD/Fingerprint-style feeds): OR with classic farm proxy.
   min_device_risk_score: 70
   integrity_min_flags: 2  # among emulator / cloned / gps_spoof / same_device
-  # Honesty: mint proxies from rule features, but do not train the fraud head on them.
+  # Honesty: mint proxies from rule features, but do not train heads on those features.
   exclude_mint_features_from_fraud_head: true
+  exclude_mint_features_from_abuse_head: true

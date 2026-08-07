@@ -57,7 +57,10 @@ def threshold_at_recall_costed(
     s = np.asarray(scores, dtype=float)
     amts = None if amounts is None else np.asarray(amounts, dtype=float)
     if amts is not None and len(amts) != len(y):
-        amts = None
+        raise ValueError(
+            f"amounts length {len(amts)} != y_true length {len(y)}; "
+            "refusing to silently disable $ FP cost constraint"
+        )
     info: dict[str, Any] = {
         "feasible": False,
         "target_recall": float(target_recall),
@@ -110,13 +113,15 @@ def threshold_at_recall_costed(
         break
 
     if best_t is None:
-        # Fall back to recall-only and mark infeasible under cost constraints.
+        # Do NOT return a usable cutoff — recall-only is diagnostic only.
         fallback = threshold_at_recall(y, s, target_recall)
         info["reason"] = "cost_constraints_infeasible"
         info["recall_only_threshold"] = fallback
-        return fallback, info
+        info["soft_threshold_usable"] = False
+        return None, info
 
     info["feasible"] = True
+    info["soft_threshold_usable"] = True
     info.update(best_stats)
     return best_t, info
 
@@ -133,6 +138,117 @@ def precision_at_threshold(
     if n_pred == 0:
         return None
     return float(y[pred].sum() / n_pred)
+
+
+def wilson_interval(
+    successes: int,
+    n: int,
+    *,
+    z: float = 1.96,
+) -> dict[str, float | None]:
+    """Wilson score interval for a binomial proportion."""
+    if n <= 0:
+        return {"p": None, "lo": None, "hi": None, "n": 0, "successes": 0}
+    k = max(0, min(int(successes), int(n)))
+    nn = int(n)
+    p = k / nn
+    zz = float(z) ** 2
+    denom = 1.0 + zz / nn
+    centre = (p + zz / (2.0 * nn)) / denom
+    margin = (
+        float(z)
+        * float(np.sqrt((p * (1.0 - p) / nn) + (zz / (4.0 * nn * nn))))
+        / denom
+    )
+    return {
+        "p": float(p),
+        "lo": float(max(0.0, centre - margin)),
+        "hi": float(min(1.0, centre + margin)),
+        "n": nn,
+        "successes": k,
+    }
+
+
+def bootstrap_precision_ci(
+    y_true: np.ndarray | list[float],
+    scores: np.ndarray | list[float],
+    threshold: float,
+    *,
+    n_boot: int = 400,
+    seed: int = 0,
+    alpha: float = 0.05,
+) -> dict[str, Any]:
+    """Percentile bootstrap CI for precision@threshold."""
+    y = np.asarray(y_true, dtype=float)
+    s = np.asarray(scores, dtype=float)
+    if len(y) == 0 or int(n_boot) <= 0:
+        return {
+            "lo": None,
+            "hi": None,
+            "n_boot": 0,
+            "n_valid": 0,
+            "precision": precision_at_threshold(y, s, threshold),
+        }
+    rng = np.random.default_rng(int(seed))
+    precs: list[float] = []
+    n = len(y)
+    for _ in range(int(n_boot)):
+        idx = rng.integers(0, n, size=n)
+        p = precision_at_threshold(y[idx], s[idx], threshold)
+        if p is not None:
+            precs.append(float(p))
+    point = precision_at_threshold(y, s, threshold)
+    if not precs:
+        return {
+            "lo": None,
+            "hi": None,
+            "n_boot": int(n_boot),
+            "n_valid": 0,
+            "precision": point,
+        }
+    lo_q = 100.0 * (float(alpha) / 2.0)
+    hi_q = 100.0 * (1.0 - float(alpha) / 2.0)
+    return {
+        "lo": float(np.percentile(precs, lo_q)),
+        "hi": float(np.percentile(precs, hi_q)),
+        "n_boot": int(n_boot),
+        "n_valid": int(len(precs)),
+        "precision": point,
+    }
+
+
+def precision_at_threshold_with_ci(
+    y_true: np.ndarray | list[float],
+    scores: np.ndarray | list[float],
+    threshold: float,
+    *,
+    z: float = 1.96,
+    n_boot: int = 400,
+    seed: int = 0,
+    alpha: float = 0.05,
+) -> dict[str, Any]:
+    """Point precision@threshold plus Wilson and bootstrap CIs."""
+    y = np.asarray(y_true, dtype=float)
+    s = np.asarray(scores, dtype=float)
+    pred = s >= float(threshold)
+    n_pred = int(pred.sum())
+    tp = int(y[pred].sum()) if n_pred else 0
+    point = float(tp / n_pred) if n_pred else None
+    wilson = wilson_interval(tp, n_pred, z=z)
+    boot = bootstrap_precision_ci(
+        y, s, threshold, n_boot=n_boot, seed=seed, alpha=alpha
+    )
+    return {
+        "precision": point,
+        "n_predicted": n_pred,
+        "n_true_positive": tp,
+        "wilson": wilson,
+        "bootstrap": boot,
+        "wilson_lo": wilson.get("lo"),
+        "wilson_hi": wilson.get("hi"),
+        "bootstrap_lo": boot.get("lo"),
+        "bootstrap_hi": boot.get("hi"),
+    }
 
 
 def recall_at_threshold(
@@ -225,12 +341,19 @@ def recommend_head_thresholds(
     def _or(value: float | None, default: float) -> float:
         return float(default if value is None else value)
 
+    abuse_soft_usable = bool(abuse_soft is not None and abuse_soft_info.get("feasible"))
+    fraud_soft_usable = bool(fraud_soft is not None and fraud_soft_info.get("feasible"))
     raw = {
         "target_pattern_recall": float(target_recall),
         "min_precision_at_soft": min_precision_at_soft,
         "max_fp_rate_at_soft": max_fp_rate_at_soft,
-        "abuse_soft_friction": _or(abuse_soft, 35.0),
-        "fraud_soft_friction": _or(fraud_soft, 30.0),
+        # Diagnostic defaults only when costed soft is unusable — ok stays False.
+        "abuse_soft_friction": (
+            float(abuse_soft) if abuse_soft_usable else _or(abuse_hold, 35.0)
+        ),
+        "fraud_soft_friction": (
+            float(fraud_soft) if fraud_soft_usable else _or(fraud_hold, 30.0)
+        ),
         "abuse_hold_review": _or(abuse_hold, 50.0),
         "fraud_hold_review": _or(fraud_hold, 45.0),
         "abuse_auto_deny": _or(abuse_deny, 75.0),
@@ -272,12 +395,15 @@ def recommend_head_thresholds(
     out["floor_would_bind"] = floor_would_bind
     out["floors_applied"] = bool(apply_floors and floor_would_bind)
     out["cost_feasible"] = bool(abuse_soft_info.get("feasible") and fraud_soft_info.get("feasible"))
+    out["soft_threshold_usable"] = bool(abuse_soft_usable and fraud_soft_usable)
     out["abuse_soft_cost_info"] = abuse_soft_info
     out["fraud_soft_cost_info"] = fraud_soft_info
     # Soft floors rewrite the recall/cost contract; hold/deny floors are warnings only.
     soft_floor_bind = [k for k in floor_would_bind if k.endswith("_soft_friction")]
     out["soft_floor_would_bind"] = soft_floor_bind
-    out["ok"] = bool(out["cost_feasible"] and not soft_floor_bind)
+    out["ok"] = bool(
+        out["cost_feasible"] and out["soft_threshold_usable"] and not soft_floor_bind
+    )
 
     out["pattern_recall_at_soft"] = pattern_flag_recall(
         abuse_y,

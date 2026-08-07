@@ -14,6 +14,7 @@ from refund_abuse_risk.scoring.decision import (
     tier_from_decision_score,
 )
 from refund_abuse_risk.scoring.monitoring import (
+    brier_score,
     evaluate_monitoring_gates,
     expected_calibration_error,
     population_stability_index,
@@ -39,6 +40,7 @@ __all__ = [
     "combine_scores",
     "derive_entity_link_scores",
     "evaluate_hard_gates",
+    "brier_score",
     "evaluate_monitoring_gates",
     "evaluate_refund_budget",
     "expected_calibration_error",

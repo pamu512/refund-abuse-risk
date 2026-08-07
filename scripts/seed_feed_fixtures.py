@@ -7,6 +7,7 @@ import argparse
 import json
 import shutil
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -28,7 +29,7 @@ def _seed_warehouse(fixtures: Path, warehouse_db: Path) -> None:
                 columns=["order_id", "disposition", "disposition_ts"]
             ).to_sql("dispositions", conn, index=False, if_exists="replace")
         metrics = {
-            "as_of": "2026-08-03T00:00:00Z",
+            "as_of": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "hold_rate": 0.18,
             "live_override_rate": 0.04,
             "shadow_override_rate": 0.11,
@@ -99,13 +100,19 @@ def main() -> None:
 
     ops_example = ROOT / "examples" / "ops_snapshot.example.json"
     ops_dst = fixtures / "ops_snapshot" / "ops_snapshot.json"
+    as_of = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     if ops_example.exists():
-        shutil.copy2(ops_example, ops_dst)
+        raw = json.loads(ops_example.read_text(encoding="utf-8"))
+        if isinstance(raw, dict):
+            raw["as_of"] = as_of
+            ops_dst.write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
+        else:
+            shutil.copy2(ops_example, ops_dst)
     else:
         ops_dst.write_text(
             json.dumps(
                 {
-                    "as_of": "2026-08-04T00:00:00Z",
+                    "as_of": as_of,
                     "source": "fixture",
                     "metrics": {
                         "cs_queue_depth": 85,
@@ -117,7 +124,8 @@ def main() -> None:
                     },
                 },
                 indent=2,
-            ),
+            )
+            + "\n",
             encoding="utf-8",
         )
 

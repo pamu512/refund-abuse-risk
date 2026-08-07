@@ -2,7 +2,9 @@
 
 Toolkit architecture for train ≈ serve honesty. Downstream owns the HTTP/API/queue runtime.
 
-Companion: [MANUAL.md](MANUAL.md) · [OPS_RUNBOOK.md](OPS_RUNBOOK.md) · [CUTOVER.md](CUTOVER.md)
+Companion: [MANUAL.md](MANUAL.md) · [OPS_RUNBOOK.md](OPS_RUNBOOK.md) · [CUTOVER.md](CUTOVER.md) · [GRADING.md](GRADING.md)
+
+Internal quality ratings / letter grades are private — see [GRADING.md](GRADING.md). Score this repo by shipped contracts and gates, not public grade claims.
 
 ---
 
@@ -29,7 +31,7 @@ Single-process claim cache and file OP are **design**, not unfinished scaffoldin
 | `graph` | UV bipartite discovery, as-of + null | Serve-path scoring |
 | `labels` | Disposition / weight contracts | Feed I/O |
 | `model` | Two-head train / predict / class balance | Threshold promote |
-| `scoring` | Policy, decision stacker, thresholds, ECE/PSI, calibrator | Training loops |
+| `scoring` | Policy, decision stacker, thresholds, Brier/adaptive ECE, Wilson+bootstrap precision CI, PSI, calibrator | Training loops |
 | `pipeline` | Precompute → cache → claim-path read | Transport |
 | `training` | Closed-loop order load, multipass helpers | Feed pull |
 | `integrations` | Feeds pull/apply, SDK/ops/disposition ingest | Vendor SDKs |
@@ -106,9 +108,11 @@ Train features must match serve builders. Proxy / discovery labels stay down-wei
 |---|---|---|
 | New feed source | `integrations/feeds.py` source adapter | pull → stage → apply; no silent schema drift |
 | New label type | `config/disposition_labels.default.yaml` + labels module | proven vs proxy weight |
-| Market×vertical ladder | `decision_threshold_overlays` via `promote_overlays.py` | only promote-eligible; backup/rollback under `config/backups/` |
-| Ops ceilings | `monitoring.ops_snapshot` + ingest | optional `max_ops_snapshot_age_hours`; missing metrics do not fail-open past ceilings once set |
-| Prod-shaped OOT | `oot/` validate + `oot_floors.prod.yaml` | schema CI ≠ prod AP green on synth |
+| Market×vertical ladder | `decision_threshold_overlays` (demo-seeded) + `promote_overlays.py` | serve resolves most-specific overlay; sidecar via `DECISION_OVERLAYS_PATH` |
+| Slice calibrator | fitted in `TwoHeadModel`, applied in `predict_proba` | `decision_score_raw` vs calibrated; joblib round-trips |
+| PIT replay | `scripts/check_pit_replay.py` + CI | future history must not change as-of features |
+| Ops ceilings | sidecar `ops_snapshot` + ingest | `max_ops_snapshot_age_hours: 24` on default OP; missing/stale metrics fail-closed once ceilings set |
+| Prod-shaped OOT | `oot/` validate (`min_pack_n`) + `eval_oot_pack` (`min_holdout_n`) | schema CI ≠ prod AP / lift |
 | Vendor SDK events | `integrations` SDK ingest → feature columns | claim refresh may re-read cache |
 | New head features | `features/builders.py` + FEATURE column lists | PIT only; add leakage test |
 

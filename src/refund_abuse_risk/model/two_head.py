@@ -15,6 +15,7 @@ from refund_abuse_risk.features.builders import (
     ABUSE_FEATURE_COLUMNS,
     FEATURE_COLUMNS,
     FRAUD_FEATURE_COLUMNS,
+    abuse_model_feature_columns,
     fraud_model_feature_columns,
 )
 
@@ -203,19 +204,23 @@ class TwoHeadModel:
         fraud_y = labeled["fraud_label"].astype(int).to_numpy()
         abuse_w = sample_weights_for_frame(labeled, label_weights, head="abuse")
         fraud_w = sample_weights_for_frame(labeled, label_weights, head="fraud")
-        if bool(label_weights.get("class_balance", True)):
+        if bool(label_weights.get("class_balance", False)):
             abuse_w = balance_class_weights(abuse_y, abuse_w)
             fraud_w = balance_class_weights(fraud_y, fraud_w)
 
-        exclude_mint = bool(
-            (label_weights.get("proxy_rules") or {}).get(
-                "exclude_mint_features_from_fraud_head", True
-            )
+        proxy_rules = label_weights.get("proxy_rules") or {}
+        exclude_mint_fraud = bool(
+            proxy_rules.get("exclude_mint_features_from_fraud_head", True)
+        )
+        exclude_mint_abuse = bool(
+            proxy_rules.get("exclude_mint_features_from_abuse_head", True)
         )
         self.fraud_feature_columns = fraud_model_feature_columns(
-            exclude_proxy_mint=exclude_mint
+            exclude_proxy_mint=exclude_mint_fraud
         )
-        self.abuse_feature_columns = list(ABUSE_FEATURE_COLUMNS)
+        self.abuse_feature_columns = abuse_model_feature_columns(
+            exclude_proxy_mint=exclude_mint_abuse
+        )
         # Older synthetic frames may lack newly added columns.
         for col in (*self.abuse_feature_columns, *self.fraud_feature_columns):
             if col not in labeled.columns:
@@ -235,6 +240,28 @@ class TwoHeadModel:
             "oof" if abuse_mode == "oof" and fraud_mode == "oof" else "in_sample"
         )
         pattern_y = ((abuse_y >= 1) | (fraud_y >= 1)).astype(int)
+        # Decision objective: proven fraud OR abuse labels — not proxy-minted fraud-only.
+        source = (
+            labeled["fraud_label_source"].astype(str).str.lower().to_numpy()
+            if "fraud_label_source" in labeled.columns
+            else np.array([""] * len(labeled))
+        )
+        strong = (
+            labeled["strong_fraud_label"].astype(float).to_numpy()
+            if "strong_fraud_label" in labeled.columns
+            else np.zeros(len(labeled))
+        )
+        proven_y = ((source == "proven") | (strong >= 1)).astype(int)
+        proxy_only = (source == "proxy") & (fraud_y >= 1) & (abuse_y < 1) & (proven_y < 1)
+        stack_y = ((proven_y >= 1) | (abuse_y >= 1)).astype(int)
+        # Drop proxy-only fraud from the joint target (keeps abuse + proven).
+        stack_y = np.where(proxy_only, 0, stack_y).astype(int)
+        min_stack_pos = int(label_weights.get("min_proven_for_stacker", 3))
+        if int(stack_y.sum()) >= min_stack_pos and len(np.unique(stack_y)) > 1:
+            stack_label = "proven_or_abuse"
+        else:
+            stack_y = pattern_y
+            stack_label = "pattern_fallback"
         stack_w = np.maximum(abuse_w, fraud_w)
         # Lazy import avoids scoring.__init__ ↔ two_head cycle at module load.
         from refund_abuse_risk.config import load_head_hyperparams
@@ -248,12 +275,13 @@ class TwoHeadModel:
         self.decision_stacker = DecisionStacker().fit(
             oof_abuse * 100.0,
             oof_fraud * 100.0,
-            pattern_y,
+            stack_y,
             sample_weight=stack_w,
             fit_mode=stack_mode,
             markets=markets,
             verticals=verticals,
         )
+        self.decision_stacker.stack_label = stack_label
         joint = self.decision_stacker.predict_scores(
             oof_abuse * 100.0, oof_fraud * 100.0, markets=markets, verticals=verticals
         )
@@ -262,7 +290,7 @@ class TwoHeadModel:
             enabled=bool(sc_cfg.get("enabled", True)),
             min_slice_n=int(sc_cfg.get("min_slice_n", 40)),
             min_slice_positives=int(sc_cfg.get("min_slice_positives", 5)),
-        ).fit(joint, pattern_y, markets, verticals)
+        ).fit(joint, stack_y, markets, verticals)
 
         self.abuse_model = _make_head("abuse")
         self.fraud_model = _make_head("fraud")
@@ -385,8 +413,15 @@ class TwoHeadModel:
             decision = self.decision_stacker.predict_scores(
                 abuse_s, fraud_s, markets=markets, verticals=verticals
             )
+        out["decision_score_raw"] = np.asarray(decision, dtype=float)
         if self.slice_calibrator is not None:
             decision = self.slice_calibrator.transform(decision, markets, verticals)
+            out["slice_calibrator_applied"] = True
+            n_slice = len(getattr(self.slice_calibrator, "models", {}) or {})
+            out["slice_calibrator_n_models"] = int(n_slice)
+        else:
+            out["slice_calibrator_applied"] = False
+            out["slice_calibrator_n_models"] = 0
         out["decision_score"] = decision
         return out
 

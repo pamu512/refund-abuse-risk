@@ -64,6 +64,7 @@ def test_all_default_configs_load() -> None:
         cfg.load_effect_rules,
         cfg.load_refund_budget,
         cfg.load_sdk_ingest,
+        cfg.load_rule_ingest,
         cfg.load_head_hyperparams,
         cfg.load_vertical_policy,
         cfg.load_feeds,
@@ -81,7 +82,9 @@ def test_overnight_profile_contract() -> None:
     ids = [s["id"] for s in data["steps"]]
     assert ids[:4] == ["pull_feeds", "train", "eval_oot", "backtest"]
     assert "list_hil" in ids
+    assert "ingest_proposed_rules" in ids
     assert "promote_overlays" in ids
+    assert ids.index("ingest_proposed_rules") < ids.index("promote_overlays")
     assert data["steps"][-1].get("optional") is True
     for step in data["steps"]:
         assert step.get("argv"), step
