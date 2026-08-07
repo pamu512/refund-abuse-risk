@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import yaml
 from sklearn.metrics import average_precision_score, roc_auc_score
@@ -26,6 +27,7 @@ from refund_abuse_risk.scoring.decision import (
     recommended_overlays_from_slices,
 )
 from refund_abuse_risk.scoring.monitoring import (
+    brier_score,
     evaluate_monitoring_gates,
     expected_calibration_error,
     population_stability_index,
@@ -115,7 +117,12 @@ def main() -> None:
     if train_orders.empty or test_orders.empty:
         train_orders = orders.iloc[: max(len(orders) // 2, 1)].reset_index(drop=True)
         test_orders = orders.iloc[len(train_orders) :].reset_index(drop=True)
-        split_stats = {**split_stats, "ok": False, "mode": "positional_fallback"}
+        split_stats = {
+            **split_stats,
+            "ok": False,
+            "mode": "positional_fallback",
+            "temporal_ok": False,
+        }
 
     model = train_two_head(train_orders, history, devices, users=users, label_weights=label_weights)
     feat = build_order_feature_frame(test_orders, history, devices, users=users)
@@ -147,8 +154,23 @@ def main() -> None:
         max_fp_rate_at_soft=float(max_fp) if max_fp is not None else None,
         apply_floors=False,
     )
+    proven_mask = scored["fraud_label_source"].astype(str).str.lower().eq("proven")
+    if "strong_fraud_label" in scored.columns:
+        proven_mask = proven_mask | scored["strong_fraud_label"].astype(float).ge(1)
+    proven_y = proven_mask.astype(int).to_numpy()
+    source = scored["fraud_label_source"].astype(str).str.lower()
+    proxy_only = source.eq("proxy") & (fraud_y >= 1) & (abuse_y < 1) & (proven_y < 1)
+    # Promote ladder: proven fraud OR abuse — exclude proxy-only fraud mass.
+    ladder_y = ((proven_y >= 1) | (abuse_y >= 1)).astype(int)
+    ladder_y = np.where(proxy_only.to_numpy(), 0, ladder_y).astype(int)
+    if int(ladder_y.sum()) < 3:
+        ladder_y = pattern_y
+        ladder_label = "pattern_fallback"
+    else:
+        ladder_label = "proven_or_abuse"
+    mon_cfg_early = operating_point.get("monitoring") or {}
     recommended_decision = recommend_decision_thresholds(
-        pattern_y,
+        ladder_y,
         decision_s,
         target_recall=target_recall,
         min_precision_at_soft=float(min_prec) if min_prec is not None else None,
@@ -158,10 +180,15 @@ def main() -> None:
             float(max_fp_dollars) if max_fp_dollars is not None else None
         ),
         apply_floors=False,
+        precision_bootstrap_n=int(mon_cfg_early.get("precision_bootstrap_n") or 400),
+        require_precision_bootstrap_ci=bool(
+            mon_cfg_early.get("require_precision_bootstrap_ci")
+        ),
     )
+    recommended_decision["ladder_label"] = ladder_label
     recommended = recommended_decision  # primary promote signal
     slice_frame = scored.copy()
-    slice_frame["pattern_y"] = pattern_y
+    slice_frame["pattern_y"] = ladder_y
     recommended_by_slice = recommend_decision_thresholds_by_slice(
         slice_frame,
         target_recall=target_recall,
@@ -187,8 +214,7 @@ def main() -> None:
     deny_f = float(thr.get("fraud_auto_deny", recommended_heads["fraud_auto_deny"]))
 
     # Primary truth: proven fraud only (proxy metrics are secondary).
-    proven_mask = scored["fraud_label_source"].astype(str).str.lower().eq("proven")
-    fraud_proven_y = proven_mask.astype(int).to_numpy()
+    fraud_proven_y = proven_y
 
     metrics = {
         "n_train": int(len(train_orders)),
@@ -199,6 +225,8 @@ def main() -> None:
         "honesty": {
             "recommended_ok": recommended.get("ok"),
             "cost_feasible": recommended.get("cost_feasible"),
+            "soft_threshold_usable": recommended.get("soft_threshold_usable"),
+            "ladder_label": ladder_label,
             "floor_would_bind": recommended.get("floor_would_bind"),
             "exclude_proxy_mint_features": bool(
                 (label_weights.get("proxy_rules") or {}).get(
@@ -206,9 +234,10 @@ def main() -> None:
                 )
             ),
             "primary_fraud_metric": "proven_only",
-            "primary_decision_metric": "pattern_on_decision_score",
+            "primary_decision_metric": "proven_ladder_when_supported",
             "primary_holdout": "time_oot",
             "stacker_fit_mode": getattr(model.decision_stacker, "fit_mode", None),
+            "stack_label": getattr(model.decision_stacker, "stack_label", None),
         },
         "decision": {
             "roc_auc": _safe_auc(pattern_y.tolist(), (decision_s / 100.0).tolist()),
@@ -280,6 +309,12 @@ def main() -> None:
     max_slice_ece = (operating_point.get("monitoring") or {}).get("max_decision_ece")
     slice_ece_ok = True
     slice_ece_failures: list[str] = []
+    _mon = operating_point.get("monitoring") or {}
+    slice_ece_kw = {
+        "binning": str(_mon.get("ece_binning") or "adaptive"),
+        "min_positives": int(_mon.get("min_ece_positives") or 5),
+        "min_bin_n": int(_mon.get("min_ece_bin_n") or 3),
+    }
     for (market, vertical), grp in scored.groupby(
         [scored["market"].astype(str), scored["vertical"].astype(str)], sort=True
     ):
@@ -290,22 +325,23 @@ def main() -> None:
         proven_g = grp["fraud_label_source"].astype(str).str.lower().eq("proven")
         proven_y = proven_g.astype(int)
         key = f"{market}|{vertical}"
-        # Gate on proven labels when support allows; else pattern ECE (reported either way).
-        ece_pat = expected_calibration_error(py.to_numpy(), ds.to_numpy())
-        ece_proven = expected_calibration_error(proven_y.to_numpy(), ds.to_numpy())
+        # Report pattern ECE; gate only on proven ECE (never green via pattern fallback).
+        ece_pat = expected_calibration_error(py.to_numpy(), ds.to_numpy(), **slice_ece_kw)
+        ece_proven = expected_calibration_error(
+            proven_y.to_numpy(), ds.to_numpy(), **slice_ece_kw
+        )
         thin = len(grp) < min_slice_n or int(proven_y.sum()) < min_slice_proven
-        ece_gate = ece_proven if int(proven_y.sum()) >= min_slice_proven else ece_pat
-        ece_val = ece_gate.get("ece")
+        ece_val = ece_proven.get("ece") if int(proven_y.sum()) >= min_slice_proven else None
         ece_ok = True
-        if (
-            not thin
-            and max_slice_ece is not None
-            and ece_val is not None
-            and float(ece_val) > float(max_slice_ece)
-        ):
-            ece_ok = False
-            slice_ece_ok = False
-            slice_ece_failures.append(key)
+        if not thin and max_slice_ece is not None:
+            if ece_val is None or ece_proven.get("usable") is False:
+                ece_ok = False
+                slice_ece_ok = False
+                slice_ece_failures.append(f"{key}:proven_ece_missing_or_unusable")
+            elif float(ece_val) > float(max_slice_ece):
+                ece_ok = False
+                slice_ece_ok = False
+                slice_ece_failures.append(key)
         slice_metrics[key] = {
             "n": int(len(grp)),
             "n_proven": int(proven_y.sum()),
@@ -351,13 +387,51 @@ def main() -> None:
     train_feat = apply_proxy_fraud_labels(train_feat, label_weights)
     train_scored = model.predict_proba(train_feat)
     train_decision = train_scored["decision_score"].to_numpy(dtype=float)
-    decision_ece = expected_calibration_error(pattern_y, decision_s)
+    # Promote ECE uses proven labels when support allows (audit H1 + calibration package).
+    mon_pre = operating_point.get("monitoring") or {}
+    min_proven_ece = int(mon_pre.get("min_proven_for_ece") or mon_pre.get("min_ece_positives") or 5)
+    ece_binning = str(mon_pre.get("ece_binning") or "adaptive")
+    min_ece_pos = int(mon_pre.get("min_ece_positives") or 5)
+    min_ece_bin = int(mon_pre.get("min_ece_bin_n") or 3)
+    ece_kwargs = {
+        "binning": ece_binning,
+        "min_positives": min_ece_pos,
+        "min_bin_n": min_ece_bin,
+    }
+    if int(proven_y.sum()) >= min_proven_ece:
+        decision_ece = expected_calibration_error(proven_y, decision_s, **ece_kwargs)
+        decision_ece["label"] = "proven_fraud"
+        decision_brier = brier_score(proven_y, decision_s)
+        decision_brier["label"] = "proven_fraud"
+    else:
+        decision_ece = {
+            "ece": None,
+            "n": int(len(decision_s)),
+            "n_positives": int(proven_y.sum()),
+            "label": "proven_insufficient",
+            "usable": False,
+            "usable_reasons": ["proven_insufficient"],
+            "binning": ece_binning,
+            "pattern_ece_diagnostic": expected_calibration_error(
+                pattern_y, decision_s, **ece_kwargs
+            ).get("ece"),
+        }
+        decision_brier = {
+            "brier": None,
+            "n": int(len(decision_s)),
+            "n_positives": int(proven_y.sum()),
+            "label": "proven_insufficient",
+        }
     psi = population_stability_index(train_decision, decision_s)
     metrics["monitoring"] = {
         "decision_ece": decision_ece,
+        "decision_brier": decision_brier,
+        "decision_ece_pattern_diagnostic": expected_calibration_error(
+            pattern_y, decision_s, **ece_kwargs
+        ),
         "decision_psi_train_vs_test": psi,
-        "abuse_ece": expected_calibration_error(abuse_y, abuse_s),
-        "fraud_ece": expected_calibration_error(fraud_y, fraud_s),
+        "abuse_ece": expected_calibration_error(abuse_y, abuse_s, **ece_kwargs),
+        "fraud_ece": expected_calibration_error(fraud_y, fraud_s, **ece_kwargs),
     }
 
     for source in ("proven", "proxy", "discovery"):
@@ -462,6 +536,9 @@ def main() -> None:
         psi_train_test=psi.get("psi"),
         monitoring_cfg=monitoring_cfg,
         ops_metrics=ops,
+        decision_brier=decision_brier.get("brier"),
+        ece_usable=decision_ece.get("usable"),
+        ece_usable_reasons=list(decision_ece.get("usable_reasons") or []),
     )
     metrics["monitoring"]["ops"] = ops
     metrics["monitoring"]["gate"] = mon_gate
@@ -479,7 +556,15 @@ def main() -> None:
     metrics["monitoring"]["ok"] = monitoring_ok
     metrics["honesty"]["monitoring_ok"] = monitoring_ok
     metrics["honesty"]["slices_ece_ok"] = bool(slice_ece_ok)
-    metrics["honesty"]["promote_ok"] = bool(recommended.get("ok") and monitoring_ok)
+    temporal_ok = bool(split_stats.get("temporal_ok", False))
+    metrics["honesty"]["temporal_ok"] = temporal_ok
+    metrics["honesty"]["promote_ok"] = bool(
+        recommended.get("ok") and monitoring_ok and temporal_ok
+    )
+    if not temporal_ok:
+        metrics["honesty"]["promote_block_reasons"] = list(
+            metrics["honesty"].get("promote_block_reasons") or []
+        ) + ["temporal_oot_not_honest"]
     metrics["honesty"]["ops_gate"] = True
 
     if args.write_slice_overlays is not None:
@@ -575,7 +660,9 @@ def main() -> None:
         metrics["tuned_head_thresholds"] = head
         metrics["tuner_decision"] = decision.to_dict()
         if args.write_config:
-            promote_ok = bool(recommended_decision.get("ok", False) and monitoring_ok)
+            promote_ok = bool(
+                recommended_decision.get("ok", False) and monitoring_ok and temporal_ok
+            )
             if not promote_ok:
                 metrics["promoted_to"] = None
                 reasons = []
@@ -583,6 +670,8 @@ def main() -> None:
                     reasons.append(
                         "decision recommended.ok is false (cost infeasible or soft floor would bind)"
                     )
+                if not temporal_ok:
+                    reasons.append("temporal_oot_not_honest (adaptive/positional split)")
                 if not mon_gate.get("ok", True):
                     reasons.extend(mon_gate.get("reasons") or ["monitoring gate failed"])
                 if not slice_ece_ok:

@@ -39,8 +39,9 @@ def test_combine_decision_primary() -> None:
 
 
 def test_recommend_decision_thresholds_costed() -> None:
-    y = [1, 1, 1, 1, 0, 0, 0, 0]
-    s = [90, 85, 80, 70, 20, 15, 10, 5]
+    y = [1] * 16 + [0] * 24
+    s = [95 - i for i in range(16)] + [20.0] * 24
     rec = recommend_decision_thresholds(y, s, target_recall=0.75, min_precision_at_soft=0.5)
     assert rec["ok"] is True
+    assert rec["precision_ci_ok"] is True
     assert rec["soft_friction"] <= rec["hold_review"] <= rec["auto_deny"]

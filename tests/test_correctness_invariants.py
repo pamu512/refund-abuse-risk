@@ -1,7 +1,7 @@
-"""Math / promote / calibration invariants that pin Correctness ≥ 9.0.
+"""Math / promote / calibration invariants (Brier, adaptive ECE, Wilson/bootstrap).
 
-Synth labels are a production-readiness issue, not a math-machinery issue.
-These tests fail if ECE/PSI/costed recall/promote contracts drift.
+Synth labels are a production-data issue, not a math-machinery issue.
+These tests fail if ECE/PSI/Brier/CI/costed recall/promote contracts drift.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from refund_abuse_risk.scoring.decision import (
     tier_from_decision_score,
 )
 from refund_abuse_risk.scoring.monitoring import (
+    brier_score,
     evaluate_monitoring_gates,
     expected_calibration_error,
     population_stability_index,
@@ -24,11 +25,13 @@ from refund_abuse_risk.scoring.monitoring import (
 )
 from refund_abuse_risk.scoring.policy import combine_scores
 from refund_abuse_risk.scoring.thresholds import (
+    bootstrap_precision_ci,
     fp_rate_at_threshold,
     precision_at_threshold,
     recall_at_threshold,
     threshold_at_recall,
     threshold_at_recall_costed,
+    wilson_interval,
 )
 from refund_abuse_risk.schemas.models import SuggestedTier
 
@@ -43,9 +46,54 @@ def test_ece_perfectly_calibrated_is_near_zero() -> None:
     assert float(out["ece"]) < 1e-9
 
 
+def test_adaptive_ece_and_brier_and_thin_unusable() -> None:
+    y = [0, 0, 0, 0, 1, 1, 1, 1] * 4
+    s = [10, 20, 30, 40, 60, 70, 80, 90] * 4
+    adapt = expected_calibration_error(
+        y, s, n_bins=4, binning="adaptive", min_positives=5, min_bin_n=3
+    )
+    assert adapt["binning"] == "adaptive"
+    assert adapt["usable"] is True
+    assert adapt["ece"] is not None
+    br = brier_score(y, s)
+    assert br["brier"] is not None
+    assert 0.0 <= float(br["brier"]) <= 1.0
+    # Perfect p̂ → Brier near 0 when labels match extremes.
+    perfect = brier_score([0, 0, 1, 1], [0, 0, 100, 100])
+    assert float(perfect["brier"]) < 1e-9
+    thin = expected_calibration_error(
+        [1, 0], [90, 10], n_bins=2, binning="adaptive", min_positives=5, min_bin_n=3
+    )
+    assert thin["usable"] is False
+    gate = evaluate_monitoring_gates(
+        decision_ece=thin.get("ece"),
+        psi_train_test=0.01,
+        monitoring_cfg={"max_decision_ece": 0.2, "max_decision_brier": 0.25},
+        decision_brier=None,
+        ece_usable=False,
+        ece_usable_reasons=list(thin.get("usable_reasons") or []),
+    )
+    assert gate["ok"] is False
+    assert any("unusable" in r for r in gate["reasons"])
+    assert any("brier" in r for r in gate["reasons"])
+
+
+def test_wilson_and_bootstrap_precision_ci() -> None:
+    w = wilson_interval(90, 100)
+    assert w["p"] == pytest.approx(0.9)
+    assert w["lo"] is not None and w["hi"] is not None
+    assert float(w["lo"]) < 0.9 < float(w["hi"])
+    y = np.array([1] * 40 + [0] * 10, dtype=float)
+    s = np.array([90.0] * 50, dtype=float)
+    boot = bootstrap_precision_ci(y, s, 50.0, n_boot=200, seed=1)
+    assert boot["lo"] is not None and boot["hi"] is not None
+    assert float(boot["lo"]) <= float(boot["precision"]) <= float(boot["hi"])
+
+
 def test_ece_empty_and_bounds() -> None:
     empty = expected_calibration_error([], [], n_bins=5)
     assert empty["ece"] is None and empty["n"] == 0
+    assert empty["usable"] is False
     # Max miscalibration: all mass at conf=1, acc=0
     bad = expected_calibration_error([0, 0, 0, 0], [100, 100, 100, 100], n_bins=2)
     assert bad["ece"] is not None
@@ -97,7 +145,9 @@ def test_costed_threshold_picks_highest_feasible_and_respects_dollar_cap() -> No
         assert float(info_tight["fp_refund_dollars_mean"]) <= 25.0 + 1e-9
     else:
         assert info_tight["reason"] == "cost_constraints_infeasible"
+        assert t_tight is None
         assert info_tight.get("recall_only_threshold") is not None
+        assert info_tight.get("soft_threshold_usable") is False
 
 
 def test_precision_recall_fp_rate_identities() -> None:
@@ -111,16 +161,27 @@ def test_precision_recall_fp_rate_identities() -> None:
 
 
 def test_recommend_decision_ladder_monotonic_and_soft_floor_blocks_ok() -> None:
-    # Perfectly separable → soft can sit very high.
-    y = [1, 1, 1, 0, 0, 0, 0, 0]
-    s = [99, 98, 97, 5, 4, 3, 2, 1]
+    # Perfectly separable with enough predicted mass for Wilson CI.
+    y = [1] * 20 + [0] * 40
+    s = [99 - i * 0.1 for i in range(20)] + [5.0] * 40
     rec = recommend_decision_thresholds(
-        y, s, target_recall=1.0, min_precision_at_soft=0.9, apply_floors=False
+        y, s, target_recall=1.0, min_precision_at_soft=0.7, apply_floors=False
     )
     assert rec["soft_friction"] <= rec["hold_review"] <= rec["auto_deny"]
     assert rec["cost_feasible"] is True
+    assert rec["precision_ci_ok"] is True
     assert rec["ok"] is True
     assert float(rec["recall_at_soft"]) >= 1.0 - 1e-12
+    assert rec["precision_at_soft_ci"]["wilson_lo"] is not None
+
+    # Tiny support → Wilson underpowered → ok=False even if point precision is 1.
+    y_tiny = [1, 1, 1, 0, 0, 0, 0, 0]
+    s_tiny = [99, 98, 97, 5, 4, 3, 2, 1]
+    rec_tiny = recommend_decision_thresholds(
+        y_tiny, s_tiny, target_recall=1.0, min_precision_at_soft=0.9, apply_floors=False
+    )
+    assert rec_tiny["precision_ci_underpowered"] is True
+    assert rec_tiny["ok"] is False
 
     # Soft threshold forced below floor (all scores low) → ok=False without apply_floors.
     y_low = [1, 1, 0, 0, 0, 0]
@@ -156,14 +217,14 @@ def test_thin_slice_not_promote_eligible_and_overlays_filter() -> None:
         assert "ID" in markets
 
 
-def test_monitoring_missing_metrics_pass_breach_fails() -> None:
+def test_monitoring_missing_metrics_fail_closed() -> None:
     missing = evaluate_monitoring_gates(
         decision_ece=None,
         psi_train_test=None,
         monitoring_cfg={"max_decision_ece": 0.2, "max_psi_train_test": 0.35},
     )
-    assert missing["ok"] is True
-    assert missing["reasons"] == []
+    assert missing["ok"] is False
+    assert any("missing" in r for r in missing["reasons"])
 
     breach = evaluate_monitoring_gates(
         decision_ece=0.9,
@@ -172,6 +233,13 @@ def test_monitoring_missing_metrics_pass_breach_fails() -> None:
     )
     assert breach["ok"] is False
     assert any("decision_ece" in r for r in breach["reasons"])
+
+    present = evaluate_monitoring_gates(
+        decision_ece=0.05,
+        psi_train_test=0.1,
+        monitoring_cfg={"max_decision_ece": 0.2, "max_psi_train_test": 0.35},
+    )
+    assert present["ok"] is True
 
 
 def test_ops_summary_refund_dollar_per_order_identity() -> None:

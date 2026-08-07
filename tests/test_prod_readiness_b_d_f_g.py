@@ -57,7 +57,11 @@ def test_pull_http_and_s3_https(tmp_path: Path) -> None:
         url = f"http://127.0.0.1:{port}/dispositions.csv"
         out = pull_http(
             "dispositions",
-            {"uri": url, "filename": "dispositions.csv"},
+            {
+                "uri": url,
+                "filename": "dispositions.csv",
+                "allowed_hosts": ["127.0.0.1"],
+            },
             root=tmp_path,
             stage_root=tmp_path / "stage",
         )
@@ -65,7 +69,11 @@ def test_pull_http_and_s3_https(tmp_path: Path) -> None:
         # s3 driver delegates https/http to pull_http
         out2 = pull_s3(
             "dispositions",
-            {"uri": url, "filename": "d2.csv"},
+            {
+                "uri": url,
+                "filename": "d2.csv",
+                "allowed_hosts": ["127.0.0.1"],
+            },
             root=tmp_path,
             stage_root=tmp_path / "stage",
         )
@@ -139,6 +147,7 @@ def test_score_api_auth_and_claim_path() -> None:
         body = json.loads(ok.read().decode())
         assert body["order_id"] == "O99"
         assert body["suggested_tier"] == "hold_review"
+        assert "evidence_pack" not in body  # default redacts evidence
 
         conn.request(
             "GET",

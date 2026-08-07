@@ -21,32 +21,143 @@ def _parse_as_of(value: Any) -> datetime | None:
     return dt.astimezone(timezone.utc)
 
 
+def _as_probs(
+    scores: np.ndarray,
+    *,
+    scores_are_0_100: bool,
+) -> np.ndarray:
+    s = np.asarray(scores, dtype=float)
+    if scores_are_0_100:
+        s = s / 100.0
+    return np.clip(s, 0.0, 1.0)
+
+
+def brier_score(
+    y_true: np.ndarray | list[float],
+    scores_0_100: np.ndarray | list[float],
+    *,
+    scores_are_0_100: bool = True,
+) -> dict[str, Any]:
+    """Mean squared error of p̂ vs binary labels (lower is better)."""
+    y = np.asarray(y_true, dtype=float)
+    p = _as_probs(np.asarray(scores_0_100, dtype=float), scores_are_0_100=scores_are_0_100)
+    if len(y) == 0:
+        return {"brier": None, "n": 0, "n_positives": 0}
+    return {
+        "brier": float(np.mean((p - y) ** 2)),
+        "n": int(len(y)),
+        "n_positives": int(y.sum()),
+        "scores_are_0_100": bool(scores_are_0_100),
+    }
+
+
 def expected_calibration_error(
     y_true: np.ndarray | list[float],
     scores_0_100: np.ndarray | list[float],
     *,
     n_bins: int = 10,
+    scores_are_0_100: bool = True,
+    binning: str = "fixed",
+    min_positives: int = 0,
+    min_bin_n: int = 0,
 ) -> dict[str, Any]:
-    """ECE on decision/head scores in 0–100 (treated as 100·p̂)."""
+    """
+    ECE on scores vs binary labels.
+
+    Default: scores in 0–100 are treated as 100·p̂ (stacker/head display scale).
+    Pass ``scores_are_0_100=False`` when scores are already probabilities in [0, 1].
+
+    ``binning``: ``fixed`` (equal-width) or ``adaptive`` (equal-frequency quantiles).
+    When ``min_positives`` / ``min_bin_n`` are set, ``usable`` is False if support
+    is too thin for a honest promote gate.
+    """
     y = np.asarray(y_true, dtype=float)
-    s = np.asarray(scores_0_100, dtype=float) / 100.0
+    s = _as_probs(np.asarray(scores_0_100, dtype=float), scores_are_0_100=scores_are_0_100)
+    strategy = str(binning or "fixed").lower().strip()
+    if strategy not in {"fixed", "adaptive"}:
+        raise ValueError(f"binning must be 'fixed' or 'adaptive', got {binning!r}")
+
     if len(y) == 0:
-        return {"ece": None, "n": 0, "n_bins": n_bins}
-    bins = np.linspace(0.0, 1.0, int(n_bins) + 1)
-    ece = 0.0
-    rows: list[dict[str, float]] = []
+        return {
+            "ece": None,
+            "n": 0,
+            "n_bins": n_bins,
+            "label": None,
+            "binning": strategy,
+            "usable": False,
+            "usable_reasons": ["empty"],
+            "n_positives": 0,
+            "scores_are_0_100": bool(scores_are_0_100),
+        }
+
     n = len(y)
-    for i in range(len(bins) - 1):
-        lo, hi = bins[i], bins[i + 1]
-        mask = (s >= lo) & (s < hi) if i < len(bins) - 2 else (s >= lo) & (s <= hi)
-        if not mask.any():
-            continue
-        conf = float(s[mask].mean())
-        acc = float(y[mask].mean())
-        w = float(mask.sum()) / n
-        ece += w * abs(acc - conf)
-        rows.append({"lo": lo, "hi": hi, "n": float(mask.sum()), "acc": acc, "conf": conf})
-    return {"ece": float(ece), "n": int(n), "n_bins": int(n_bins), "bins": rows}
+    n_pos = int(y.sum())
+    rows: list[dict[str, float]] = []
+    ece = 0.0
+
+    if strategy == "adaptive":
+        qs = np.linspace(0.0, 1.0, int(n_bins) + 1)
+        edges = np.unique(np.quantile(s, qs))
+        if len(edges) < 2:
+            edges = np.array([0.0, 1.0], dtype=float)
+        for i in range(len(edges) - 1):
+            lo, hi = float(edges[i]), float(edges[i + 1])
+            if i < len(edges) - 2:
+                mask = (s >= lo) & (s < hi)
+            else:
+                mask = (s >= lo) & (s <= hi)
+            if not mask.any():
+                continue
+            conf = float(s[mask].mean())
+            acc = float(y[mask].mean())
+            w = float(mask.sum()) / n
+            ece += w * abs(acc - conf)
+            rows.append(
+                {"lo": lo, "hi": hi, "n": float(mask.sum()), "acc": acc, "conf": conf}
+            )
+    else:
+        bins = np.linspace(0.0, 1.0, int(n_bins) + 1)
+        for i in range(len(bins) - 1):
+            lo, hi = float(bins[i]), float(bins[i + 1])
+            mask = (s >= lo) & (s < hi) if i < len(bins) - 2 else (s >= lo) & (s <= hi)
+            if not mask.any():
+                continue
+            conf = float(s[mask].mean())
+            acc = float(y[mask].mean())
+            w = float(mask.sum()) / n
+            ece += w * abs(acc - conf)
+            rows.append(
+                {"lo": lo, "hi": hi, "n": float(mask.sum()), "acc": acc, "conf": conf}
+            )
+
+    usable_reasons: list[str] = []
+    if int(min_positives) > 0 and n_pos < int(min_positives):
+        usable_reasons.append(
+            f"n_positives={n_pos} < min_positives={int(min_positives)}"
+        )
+    if int(min_bin_n) > 0:
+        thin_bins = [r for r in rows if float(r["n"]) < float(min_bin_n)]
+        if thin_bins:
+            usable_reasons.append(
+                f"{len(thin_bins)} occupied bin(s) below min_bin_n={int(min_bin_n)}"
+            )
+        if len(rows) < 2:
+            usable_reasons.append("fewer than 2 occupied bins")
+
+    usable = len(usable_reasons) == 0
+    return {
+        "ece": float(ece),
+        "n": int(n),
+        "n_bins": int(n_bins),
+        "bins": rows,
+        "n_positives": n_pos,
+        "scores_are_0_100": bool(scores_are_0_100),
+        "binning": strategy,
+        "usable": bool(usable),
+        "usable_reasons": usable_reasons,
+        "min_positives": int(min_positives),
+        "min_bin_n": int(min_bin_n),
+    }
 
 
 def population_stability_index(
@@ -132,28 +243,56 @@ def evaluate_monitoring_gates(
     psi_train_test: float | None,
     monitoring_cfg: dict[str, Any] | None,
     ops_metrics: dict[str, Any] | None = None,
+    decision_brier: float | None = None,
+    ece_usable: bool | None = None,
+    ece_usable_reasons: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Honesty promote gate for calibration / drift / ops.
 
-    Missing metrics → pass (cannot gate on unknown). Breach → ok=False.
+    Fail-closed: if a ceiling is configured and the metric is missing → ok=False.
+    When ``max_decision_ece`` is set and ``ece_usable`` is False → ok=False.
+    Breach of a present metric → ok=False.
     ``monitoring.ops_snapshot`` (online feed) is merged over offline ops_metrics.
     """
     cfg = monitoring_cfg or {}
     max_ece = cfg.get("max_decision_ece")
+    max_brier = cfg.get("max_decision_brier")
     max_psi = cfg.get("max_psi_train_test")
     reasons: list[str] = []
     ok = True
-    if max_ece is not None and decision_ece is not None and float(decision_ece) > float(max_ece):
-        ok = False
-        reasons.append(
-            f"decision_ece={float(decision_ece):.4f} > max_decision_ece={float(max_ece)}"
-        )
-    if max_psi is not None and psi_train_test is not None and float(psi_train_test) > float(max_psi):
-        ok = False
-        reasons.append(
-            f"psi_train_test={float(psi_train_test):.4f} > max_psi_train_test={float(max_psi)}"
-        )
+    if max_ece is not None:
+        if ece_usable is False:
+            ok = False
+            detail = ",".join(ece_usable_reasons or ["unusable"])
+            reasons.append(f"decision_ece unusable with max_decision_ece configured ({detail})")
+        elif decision_ece is None:
+            ok = False
+            reasons.append("decision_ece missing with max_decision_ece configured")
+        elif float(decision_ece) > float(max_ece):
+            ok = False
+            reasons.append(
+                f"decision_ece={float(decision_ece):.4f} > max_decision_ece={float(max_ece)}"
+            )
+    if max_brier is not None:
+        if decision_brier is None:
+            ok = False
+            reasons.append("decision_brier missing with max_decision_brier configured")
+        elif float(decision_brier) > float(max_brier):
+            ok = False
+            reasons.append(
+                f"decision_brier={float(decision_brier):.4f} > "
+                f"max_decision_brier={float(max_brier)}"
+            )
+    if max_psi is not None:
+        if psi_train_test is None:
+            ok = False
+            reasons.append("psi_train_test missing with max_psi_train_test configured")
+        elif float(psi_train_test) > float(max_psi):
+            ok = False
+            reasons.append(
+                f"psi_train_test={float(psi_train_test):.4f} > max_psi_train_test={float(max_psi)}"
+            )
 
     ops = dict(ops_metrics or {})
     snapshot = cfg.get("ops_snapshot") or {}
@@ -172,8 +311,12 @@ def evaluate_monitoring_gates(
     )
     for metric_key, cfg_key in ops_checks:
         ceiling = cfg.get(cfg_key)
+        if ceiling is None:
+            continue
         value = ops.get(metric_key)
-        if ceiling is None or value is None:
+        if value is None:
+            ok = False
+            reasons.append(f"{metric_key} missing with {cfg_key} configured")
             continue
         if float(value) > float(ceiling):
             ok = False
@@ -206,8 +349,11 @@ def evaluate_monitoring_gates(
     return {
         "ok": ok,
         "max_decision_ece": float(max_ece) if max_ece is not None else None,
+        "max_decision_brier": float(max_brier) if max_brier is not None else None,
         "max_psi_train_test": float(max_psi) if max_psi is not None else None,
         "decision_ece": float(decision_ece) if decision_ece is not None else None,
+        "decision_brier": float(decision_brier) if decision_brier is not None else None,
+        "ece_usable": ece_usable,
         "psi_train_test": float(psi_train_test) if psi_train_test is not None else None,
         "ops": ops,
         "reasons": reasons,

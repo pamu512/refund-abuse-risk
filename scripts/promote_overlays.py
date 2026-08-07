@@ -39,20 +39,26 @@ def load_overlays(path: Path) -> list[dict[str, Any]]:
     return [dict(x) for x in overlays if isinstance(x, dict)]
 
 
-def backup_op(op_path: Path, backup_dir: Path, *, keep: int = 5) -> Path:
+def backup_op(
+    op_path: Path,
+    backup_dir: Path,
+    *,
+    keep: int = 5,
+    prefix: str = "operating_point",
+) -> Path:
     backup_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    dest = backup_dir / f"operating_point.{stamp}.yaml"
+    dest = backup_dir / f"{prefix}.{stamp}.yaml"
     shutil.copy2(op_path, dest)
-    existing = sorted(backup_dir.glob("operating_point.*.yaml"))
+    existing = sorted(backup_dir.glob(f"{prefix}.*.yaml"))
     while len(existing) > int(keep):
         existing[0].unlink(missing_ok=True)
-        existing = sorted(backup_dir.glob("operating_point.*.yaml"))
+        existing = sorted(backup_dir.glob(f"{prefix}.*.yaml"))
     return dest
 
 
-def newest_backup(backup_dir: Path) -> Path | None:
-    existing = sorted(backup_dir.glob("operating_point.*.yaml"))
+def newest_backup(backup_dir: Path, *, prefix: str = "operating_point") -> Path | None:
+    existing = sorted(backup_dir.glob(f"{prefix}.*.yaml"))
     return existing[-1] if existing else None
 
 

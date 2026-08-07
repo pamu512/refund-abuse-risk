@@ -1,9 +1,11 @@
-# Production readiness A+C — design
+# Prod-shaped contracts + overlay promote — design
 
 Date: 2026-08-06  
 Status: approved + implemented (2026-08-06)  
-Tracks: **A** live-shaped data path + **C** promote-to-serve overlays  
+Tracks: **live-shaped data path** + **promote-to-serve overlays**  
 Acceptance bar: **contracts + prod-shaped fixture pack** (not live warehouse)
+
+> Privacy: historical filename retained for links. Internal quality ratings are private — see [docs/GRADING.md](../../GRADING.md).
 
 Companion: [CUTOVER.md](../../CUTOVER.md) · [OPS_RUNBOOK.md](../../OPS_RUNBOOK.md) · [ARCHITECTURE.md](../../ARCHITECTURE.md)
 
@@ -11,9 +13,7 @@ Companion: [CUTOVER.md](../../CUTOVER.md) · [OPS_RUNBOOK.md](../../OPS_RUNBOOK.
 
 ## 1. Goal
 
-Raise **Production readiness** without claiming live loss reduction.
-
-Ship in-repo:
+Ship in-repo production-shaped contracts without claiming live loss reduction:
 
 1. **Strict prod floors** + a **prod-shaped** OOT pack (disposition/chargeback schema).
 2. **Train gate** that refuses synth-only when required.
@@ -30,7 +30,7 @@ Explicitly **not** in this change: live warehouse URIs, HTTP serve API, GraphBEA
 
 ---
 
-## 3. Track A — live-shaped data path
+## 3. Track — live-shaped data path
 
 ### 3.1 Strict floors
 
@@ -89,7 +89,7 @@ Seed helper: extend `seed_oot_pack.py` with `--profile prod_shaped` or a dedicat
 
 ---
 
-## 4. Track C — promote-to-serve overlays
+## 4. Track — promote-to-serve overlays
 
 ### 4.1 Promote CLI
 
@@ -140,10 +140,9 @@ Promote overlays is **separate** from head-threshold HIL. Large global ladder ch
 
 ---
 
-## 6. Docs / grade
+## 6. Docs
 
-- Update CUTOVER, OPS_RUNBOOK, MANUAL cheat sheet, README status.
-- Regrade Production readiness only after tests green — expected move **5.0 → ~6.5–7.0** (contracts + pack + promote), **not** A++ (still no live feeds/runtime).
+- Update CUTOVER, OPS_RUNBOOK, MANUAL cheat sheet, README status (capability language only; no public grade claims).
 
 ---
 
@@ -162,7 +161,7 @@ Promote overlays is **separate** from head-threshold HIL. Large global ladder ch
 1. Floors + pack seed + `validate_oot_pack` (schema)
 2. `--require-dispositions` + freshness gate
 3. `promote_overlays.py` + tests
-4. Overnight / docs / regrade note
+4. Overnight / docs
 
 ---
 
@@ -170,6 +169,6 @@ Promote overlays is **separate** from head-threshold HIL. Large global ladder ch
 
 - [x] No placeholders / TBD for required behavior
 - [x] No contradiction with ARCHITECTURE (toolkit, Downstream owns API)
-- [x] Scope limited to A+C acceptance bar **2**
+- [x] Scope limited to contracts + prod-shaped fixture pack acceptance bar
 - [x] Success criteria testable (schema CI vs optional full eval)
 - [x] Synth AP failure on prod floors is explicit, not a silent pass

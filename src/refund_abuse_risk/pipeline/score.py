@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,7 @@ from refund_abuse_risk.config import (
     load_policy,
     load_refund_budget,
 )
+from refund_abuse_risk.control_plane.challenges import resolve_risk_challenge
 from refund_abuse_risk.control_plane.effects import resolve_refund_effect
 from refund_abuse_risk.features.builders import build_order_feature_frame, build_order_feature_row
 from refund_abuse_risk.graph.entities import EntityGraphIndex
@@ -36,6 +38,7 @@ from refund_abuse_risk.schemas.models import (
     LifecycleEvent,
     LinkScores,
     OrderRiskSnapshot,
+    RiskChallenge,
 )
 from refund_abuse_risk.scoring.budget import apply_budget_effect_floor, evaluate_refund_budget
 from refund_abuse_risk.scoring.decision import operating_point_for_slice
@@ -112,6 +115,7 @@ def score_feature_row(
     effect_cfg: dict[str, Any] | None = None,
     budget_cfg: dict[str, Any] | None = None,
     update_baselines: bool = True,
+    decision_archive: Any | None = None,
 ) -> OrderRiskSnapshot:
     policy = policy or load_policy()
     operating_point = operating_point or load_operating_point()
@@ -205,6 +209,12 @@ def score_feature_row(
         decision_score=decision_score,
         effect_cfg=effect_cfg,
     )
+    challenge = resolve_risk_challenge(
+        tier,
+        features,
+        decision_score=decision_score,
+        effect_cfg=effect_cfg,
+    )
     budget = evaluate_refund_budget(features, budget_cfg)
     final_effect, budget, budget_reasons = apply_budget_effect_floor(
         effect.final_effect, budget, budget_cfg
@@ -212,10 +222,21 @@ def score_feature_row(
     effect_meta = effect.to_dict()
     effect_meta["final_effect"] = final_effect.value
     effect_meta["budget_floored"] = bool(budget.floored)
+    effect_meta["challenge"] = challenge.to_dict()
     reason_codes = [item.reason_code for item in evidence.items]
     reason_codes.extend(effect.reason_codes)
+    reason_codes.extend(challenge.reason_codes)
     reason_codes.extend(budget_reasons)
-    return OrderRiskSnapshot(
+    if challenge.final_challenge != RiskChallenge.NONE:
+        reason_codes.append(f"challenge:{challenge.final_challenge.value}")
+    if bool(scored.get("slice_calibrator_applied")):
+        reason_codes.append("slice_calibrator_applied")
+    if operating_point.get("decision_threshold_overlays"):
+        thr = (slice_op.get("decision_thresholds") or {})
+        global_thr = (operating_point.get("decision_thresholds") or {})
+        if thr != global_thr:
+            reason_codes.append(f"slice_overlay:{market}|{vertical}")
+    snap = OrderRiskSnapshot(
         order_id=str(features.get("order_id", "")),
         market=str(features.get("market", "")),
         vertical=str(features.get("vertical", "")),
@@ -228,6 +249,8 @@ def score_feature_row(
         suggested_tier=tier,
         refund_effect=final_effect,
         shadow_refund_effect=effect.shadow_effect,
+        risk_challenge=challenge.final_challenge,
+        shadow_risk_challenge=challenge.shadow_challenge,
         reason_codes=reason_codes,
         evidence_pack=evidence,
         hard_gated=hard_gated,
@@ -243,6 +266,16 @@ def score_feature_row(
         effect_decision=effect_meta,
         refund_budget=budget.to_dict(),
     )
+    archive = decision_archive
+    if archive is None:
+        env_path = os.environ.get("DECISION_ARCHIVE_PATH")
+        if env_path:
+            from refund_abuse_risk.ops.decision_archive import DecisionArchive
+
+            archive = DecisionArchive(env_path)
+    if archive is not None:
+        archive.append_snapshot(snap)
+    return snap
 
 
 def precompute_orders(

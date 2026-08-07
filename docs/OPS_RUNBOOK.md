@@ -142,7 +142,7 @@ These are **process** SLOs for the scoring toolkit. Fraud-loss SLOs are Downstre
 
 ---
 
-## 7. Prod-shaped pack + overlay promote (A+C)
+## 7. Prod-shaped contracts + overlay promote
 
 ```bash
 # Schema contract (CI) — not lift
@@ -152,14 +152,53 @@ python scripts/validate_oot_pack.py --pack-dir data/oot_packs/prod_shaped_v1
 # Train refuses synth-only
 python scripts/train_model.py --feature-source serve --require-dispositions
 
-# Overlays → serve OP
+# Fresh ops sidecar required before promote (default OP age gate = 24h; no baked snapshot)
+python scripts/seed_feed_fixtures.py   # demo: stamps as_of=now
+python scripts/pull_production_feeds.py --config config/feeds.default.yaml
+
+# Overlays → serve OP (default OP ships demo SG/ID|food ladders; replace for prod)
 python scripts/backtest.py --write-slice-overlays examples/csv_demo/slice_overlays.yaml
 python scripts/promote_overlays.py --overlays examples/csv_demo/slice_overlays.yaml --dry-run
 python scripts/promote_overlays.py --overlays examples/csv_demo/slice_overlays.yaml --require-non-empty
 # python scripts/promote_overlays.py --rollback
+# Optional sidecar: DECISION_OVERLAYS_PATH=config/decision_threshold_overlays.demo.yaml
+
+# PIT leakage gate (also in GitHub Actions CI)
+python scripts/check_pit_replay.py
+
+# P0 — segment refund anomalies → proposed rules (shadow only; never auto-merge)
+python scripts/detect_segment_anomalies.py --orders data/orders.csv
+# → data/proposed_rules/segment_anomalies.proposed.yaml
+
+# Ingest proposed rules into OP overlays / effect_rules (default config: disabled)
+python scripts/ingest_proposed_rules.py --config config/rule_ingest.default.yaml --dry-run
+# Apply (requires rule_ingest.enabled: true): merge-tighten overlays; append new effect/challenge ids
+# python scripts/ingest_proposed_rules.py --config config/rule_ingest.default.yaml
+# Allow mode: live from proposals for this process:
+# INGEST_RULES_LIVE=1 python scripts/ingest_proposed_rules.py --config config/rule_ingest.default.yaml
+# Overnight step (also needs enabled: true in rule_ingest config):
+# INGEST_PROPOSED_RULES=1 python scripts/ops_overnight.py
+
+# P1a — decision archive (set on serve / score path)
+export DECISION_ARCHIVE_PATH=data/decision_archive.db
+python scripts/query_decision_archive.py --limit 20
+
+# P1b — weak LF labels (proven rows untouched)
+python scripts/mint_weak_labels.py --with-features
+
+# P2a — GraphBEAN-lite UV recon → proposed actions (shadow only; never auto-merge)
+python scripts/run_graphbean_lite.py --history data/history.csv
+# → data/proposed_rules/graphbean_lite.proposed.yaml
+# Unknown kinds (e.g. graphbean_edge) are skipped by ingest until mapped to overlay/effect/challenge.
+
+# P2b — risk challenges live under config/effect_rules.default.yaml (challenge_rules);
+# score path fills risk_challenge / shadow_risk_challenge on OrderRiskSnapshot.
 ```
 
-Full `eval_oot_pack` against `oot_floors.prod.yaml` may fail AP on the synth fixture — expected. Live packs must clear those floors.
+**CI green ≠ production lift.** `validate_oot_pack` / pytest only prove schema + disposition
+contracts (`min_pack_n`, proven counts). Proven AP / ECE / `temporal_ok` require a **live**
+OOT pack under `eval_oot_pack` + `oot_floors.prod.yaml`. Synth `prod_shaped_v1` may fail
+those floors — expected.
 
 ---
 

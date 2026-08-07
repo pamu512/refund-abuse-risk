@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -39,8 +40,50 @@ def load_label_weights(config_dir: Path | None = None) -> dict[str, Any]:
     return load_yaml((config_dir or default_config_dir()) / "label_weights.default.yaml")
 
 
+def merge_decision_threshold_overlays(
+    operating_point: dict[str, Any],
+    *,
+    config_dir: Path | None = None,
+) -> dict[str, Any]:
+    """
+    Ensure serve sees market×vertical ladders.
+
+    Precedence: non-empty inline overlays → ``DECISION_OVERLAYS_PATH`` env →
+    ``decision_threshold_overlays_file`` (repo- or config-relative).
+    """
+    op = dict(operating_point)
+    inline = op.get("decision_threshold_overlays") or []
+    if isinstance(inline, list) and len(inline) > 0:
+        return op
+
+    candidates: list[Path] = []
+    env_path = os.environ.get("DECISION_OVERLAYS_PATH")
+    if env_path:
+        candidates.append(Path(env_path))
+    file_key = op.get("decision_threshold_overlays_file")
+    if file_key:
+        p = Path(str(file_key))
+        candidates.append(p)
+        cfg = config_dir or default_config_dir()
+        candidates.append(cfg / p)
+        candidates.append(_ROOT / p)
+
+    for path in candidates:
+        if not path.is_file():
+            continue
+        data = load_yaml(path)
+        overlays = data.get("decision_threshold_overlays")
+        if isinstance(overlays, list) and overlays:
+            op["decision_threshold_overlays"] = [dict(x) for x in overlays if isinstance(x, dict)]
+            op["_overlays_source"] = str(path)
+            break
+    return op
+
+
 def load_operating_point(config_dir: Path | None = None) -> dict[str, Any]:
-    return load_yaml((config_dir or default_config_dir()) / "operating_point.default.yaml")
+    cfg_dir = config_dir or default_config_dir()
+    op = load_yaml(cfg_dir / "operating_point.default.yaml")
+    return merge_decision_threshold_overlays(op, config_dir=cfg_dir)
 
 
 def load_guardrails(config_dir: Path | None = None) -> dict[str, Any]:
@@ -69,6 +112,10 @@ def load_refund_budget(config_dir: Path | None = None) -> dict[str, Any]:
 
 def load_sdk_ingest(config_dir: Path | None = None) -> dict[str, Any]:
     return load_yaml((config_dir or default_config_dir()) / "sdk_ingest.default.yaml")
+
+
+def load_rule_ingest(config_dir: Path | None = None) -> dict[str, Any]:
+    return load_yaml((config_dir or default_config_dir()) / "rule_ingest.default.yaml")
 
 
 def load_head_hyperparams(config_dir: Path | None = None) -> dict[str, Any]:

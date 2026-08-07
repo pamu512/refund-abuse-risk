@@ -1,4 +1,4 @@
-# Cutover checklist — A+ toolkit → real A++ (live)
+# Cutover checklist — live Downstream wiring
 
 In-repo ladder is closed. Remaining work is Downstream wiring, not more synth multipass.
 
@@ -11,10 +11,13 @@ In-repo ladder is closed. Remaining work is Downstream wiring, not more synth mu
 - [x] Hybrid feeds: `local_dir` + `sqlite` (`feeds.default.yaml` / `feeds.warehouse.yaml`)
 - [x] Labeled OOT packs + floors (`eval_oot_pack.py`)
 - [x] Ops snapshot + SDK / disposition ingest paths
-- [x] Prod-shaped contracts (A+C): `oot_floors.prod.yaml`, `data/oot_packs/prod_shaped_v1/`, `validate_oot_pack.py`, `--require-dispositions`, ops snapshot max-age gate, `promote_overlays.py` (+ rollback)
+- [x] Prod-shaped contracts + overlay promote: `oot_floors.prod.yaml`, `data/oot_packs/prod_shaped_v1/`, `validate_oot_pack.py`, `--require-dispositions`, ops snapshot max-age gate, `promote_overlays.py` (+ rollback)
 - [x] HTTP + S3 feed drivers (`http` / `s3` https or boto3); `feeds.http.example.yaml`
 - [x] `config/ops.overnight.prod.yaml` (require-dispositions, prod pack schema, require_promote)
 - [x] Minimal claim-path HTTP API (`scripts/serve_api.py`, Bearer / X-Api-Token)
+- [x] Audit C/H remediation: fail-closed promote, costed None, proven∪abuse stacker,
+      proven ECE gates, class_balance off, mint-feature holdout, temporal_ok promote,
+      HTTP allowed_hosts, serve audit/rate-limit/optional TLS
 
 ## Downstream (outside this repo)
 
@@ -22,7 +25,7 @@ In-repo ladder is closed. Remaining work is Downstream wiring, not more synth mu
 2. Replace / augment `prod_shaped_v1` with a **live** pack; keep `config/oot_floors.prod.yaml` (schema CI uses the fixture; live AP must clear prod floors).
 3. Wire vendor SDK / vision event stream into `sdk_events` fixture path or claim-path `refresh_order`.
 4. Cron: `./scripts/ops_overnight.sh` with `FEEDS_CONFIG` / `OOT_PACK` / `--require-promote`; set `PROMOTE_OVERLAYS=1` when overlays file is non-empty — see [OPS_RUNBOOK.md](OPS_RUNBOOK.md).
-5. Set `monitoring.max_ops_snapshot_age_hours: 24` on live OP and refresh ops_snapshot daily.
+5. Refresh `data/ops_snapshot.json` daily (default OP already sets `max_ops_snapshot_age_hours: 24`; no baked demo snapshot).
 6. Pass `delivered_ts` / `claim_ts` on score requests so policy window features fire.
 7. Keep Architecture boundaries: no claim-path live graph walks; Downstream owns API/queue ([ARCHITECTURE.md](ARCHITECTURE.md)).
 

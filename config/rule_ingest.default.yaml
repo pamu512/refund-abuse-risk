@@ -1,0 +1,32 @@
+# Proposed-rule ingest — merge proposals into OP / effect_rules (no portal).
+# Default: disabled + shadow-only. See docs/OPS_RUNBOOK.md.
+version: 1
+enabled: false                 # master switch; false = no-op even if CLI run
+live_enabled: false            # false → force all ingested rules to mode: shadow
+                               # true OR env INGEST_RULES_LIVE=1 → allow mode: live from proposal
+
+# Source globs (relative to repo root unless absolute)
+sources:
+  - data/proposed_rules/*.proposed.yaml
+  - data/proposed_rules/*.yaml
+
+# Gates applied to each proposal before merge
+gates:
+  min_z: 3.0                   # segment / graphbean z-like fields; skip if present and below
+  min_recon_z: 0.0             # GraphBEAN-lite recon residual; 0 = off
+  min_edge_orders: 0           # skip overlay/effect proposals with edge_n / n_test_day below
+  max_proposals: 50            # hard cap after filtering; excess dropped (logged)
+  max_overlay_proposals: 50    # cap for decision_threshold_overlay kind
+  max_challenge_proposals: 50  # cap for challenge_rule kind
+
+# Targets
+targets:
+  operating_point: config/operating_point.default.yaml
+  effect_rules: config/effect_rules.default.yaml
+  backup_dir: config/backups
+  backup_keep: 5
+
+# Overnight (profile may reference; still needs when_env)
+overnight:
+  step_id: ingest_proposed_rules
+  when_env: INGEST_PROPOSED_RULES

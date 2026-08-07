@@ -275,6 +275,7 @@ config/
   effect_rules.default.yaml      # shadow→live effects + kill_switch
   refund_budget.default.yaml     # advisory budget floor
   sdk_ingest.default.yaml        # SDK confidence gate
+  rule_ingest.default.yaml       # proposed-rule ingest gates (disabled by default)
   disposition_labels.default.yaml# disposition → label mapping + lag
   feeds.default.yaml             # local_dir fixtures
   feeds.warehouse.yaml           # sqlite warehouse queries
@@ -378,6 +379,7 @@ Promote checklist:
 | `ops_overnight.py` / `ops_overnight.sh` | Declarative overnight profile (`config/ops.overnight.yaml`) |
 | `validate_oot_pack.py` | Pack schema / disposition contract (not lift) |
 | `promote_overlays.py` | Apply/rollback `decision_threshold_overlays` with OP backup |
+| `ingest_proposed_rules.py` | Merge `data/proposed_rules` into OP / effect_rules (shadow default; `rule_ingest.enabled`) |
 | `seed_oot_pack.py --profile prod_shaped` | Prod-shaped fixture pack |
 | `serve_api.py` | Minimal claim-path HTTP API (`SCORE_API_TOKEN`) |
 | `ops_overnight.py --profile config/ops.overnight.prod.yaml` | Prod overnight (dispositions + promote gates) |

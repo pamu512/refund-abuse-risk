@@ -27,6 +27,7 @@ class DecisionStacker:
     model: Any = None
     model_version: str = "0.1.0"
     fit_mode: str = "unset"  # oof | in_sample | unset
+    stack_label: str = "unset"  # proven_fraud | pattern_fallback | unset
     market_levels: list[str] | None = None
     vertical_levels: list[str] | None = None
     use_slices: bool = False
@@ -170,27 +171,58 @@ def _norm_slice_labels(values: np.ndarray, n: int, *, upper: bool) -> np.ndarray
     return np.array([s.lower() if s else "all" for s in out], dtype=object)
 
 
+def _overlay_specificity(
+    ov_m: str,
+    ov_v: str,
+    *,
+    market: str,
+    vertical: str,
+) -> int | None:
+    """
+    Match score for an overlay against a slice.
+
+    Higher is more specific: market+vertical=3, market=2, vertical=1, bare=0.
+    None = no match. YAML order only breaks ties at equal specificity.
+    """
+    if ov_m and ov_m != market:
+        return None
+    if ov_v and ov_v != vertical:
+        return None
+    score = 0
+    if ov_m:
+        score += 2
+    if ov_v:
+        score += 1
+    return score
+
+
 def resolve_decision_thresholds(
     operating_point: dict[str, Any],
     *,
     market: str = "",
     vertical: str = "",
 ) -> dict[str, Any]:
-    """Merge global decision_thresholds with market×vertical overlay (first match)."""
+    """Merge global decision_thresholds with the most-specific matching overlay."""
     base = dict(operating_point.get("decision_thresholds") or {})
     mkt = str(market or "").upper()
     vert = str(vertical or "").lower()
-    for overlay in operating_point.get("decision_threshold_overlays") or []:
+    best: tuple[int, int, dict[str, Any]] | None = None  # (score, -index, overlay)
+    for idx, overlay in enumerate(operating_point.get("decision_threshold_overlays") or []):
+        if not isinstance(overlay, dict):
+            continue
         ov_m = str(overlay.get("market", "") or "").upper()
         ov_v = str(overlay.get("vertical", "") or "").lower()
-        if ov_m and ov_m != mkt:
+        score = _overlay_specificity(ov_m, ov_v, market=mkt, vertical=vert)
+        if score is None:
             continue
-        if ov_v and ov_v != vert:
-            continue
+        # Prefer higher specificity; earlier YAML index wins ties.
+        cand = (score, -idx, overlay)
+        if best is None or cand[:2] > best[:2]:
+            best = cand
+    if best is not None:
         for key in _THRESHOLD_KEYS:
-            if key in overlay and overlay[key] is not None:
-                base[key] = float(overlay[key])
-        break
+            if key in best[2] and best[2][key] is not None:
+                base[key] = float(best[2][key])
     return base
 
 
@@ -237,11 +269,15 @@ def recommend_decision_thresholds(
     amounts: np.ndarray | list[float] | None = None,
     max_fp_refund_dollars_mean: float | None = None,
     apply_floors: bool = False,
+    precision_bootstrap_n: int = 400,
+    require_precision_bootstrap_ci: bool = False,
+    precision_ci_seed: int = 0,
+    min_precision_ci_n: int = 10,
 ) -> dict[str, Any]:
     """Costed soft/hold/deny on the joint decision score (precision / FP / $)."""
     from refund_abuse_risk.scoring.thresholds import (
         fp_rate_at_threshold,
-        precision_at_threshold,
+        precision_at_threshold_with_ci,
         recall_at_threshold,
         threshold_at_recall,
         threshold_at_recall_costed,
@@ -258,12 +294,15 @@ def recommend_decision_thresholds(
     )
     hold = threshold_at_recall(pattern_y, decision_scores, max(0.85, target_recall - 0.08))
     deny = threshold_at_recall(pattern_y, decision_scores, 0.50)
+    soft_usable = bool(soft is not None and soft_info.get("feasible"))
 
     def _or(v: float | None, default: float) -> float:
         return float(default if v is None else v)
 
+    # Diagnostic ladder only when costed soft is unusable — never promote these.
+    soft_val = float(soft) if soft_usable else _or(hold, 35.0)
     raw = {
-        "soft_friction": _or(soft, 35.0),
+        "soft_friction": soft_val,
         "hold_review": _or(hold, 50.0),
         "auto_deny": _or(deny, 75.0),
         "target_pattern_recall": float(target_recall),
@@ -285,14 +324,43 @@ def recommend_decision_thresholds(
     out["floor_would_bind"] = floor_would_bind
     out["soft_floor_would_bind"] = soft_floor
     out["cost_feasible"] = bool(soft_info.get("feasible"))
+    out["soft_threshold_usable"] = soft_usable
     out["soft_cost_info"] = soft_info
-    out["ok"] = bool(out["cost_feasible"] and not soft_floor)
     out["recall_at_soft"] = recall_at_threshold(pattern_y, decision_scores, out["soft_friction"])
-    out["precision_at_soft"] = precision_at_threshold(
-        pattern_y, decision_scores, out["soft_friction"]
+    prec_ci = precision_at_threshold_with_ci(
+        pattern_y,
+        decision_scores,
+        out["soft_friction"],
+        n_boot=int(precision_bootstrap_n),
+        seed=int(precision_ci_seed),
     )
+    out["precision_at_soft"] = prec_ci.get("precision")
+    out["precision_at_soft_ci"] = prec_ci
     out["fp_rate_at_soft"] = fp_rate_at_threshold(
         pattern_y, decision_scores, out["soft_friction"]
+    )
+    precision_ci_ok = True
+    n_pred = int(prec_ci.get("n_predicted") or 0)
+    underpowered = n_pred < int(min_precision_ci_n)
+    out["precision_ci_underpowered"] = bool(underpowered)
+    out["min_precision_ci_n"] = int(min_precision_ci_n)
+    if min_precision_at_soft is not None:
+        floor = float(min_precision_at_soft)
+        if underpowered:
+            # Fail-closed: point estimate alone is not enough for promote honesty.
+            precision_ci_ok = False
+        else:
+            w_lo = prec_ci.get("wilson_lo")
+            if w_lo is None or float(w_lo) + 1e-12 < floor:
+                precision_ci_ok = False
+            if require_precision_bootstrap_ci:
+                b_lo = prec_ci.get("bootstrap_lo")
+                if b_lo is None or float(b_lo) + 1e-12 < floor:
+                    precision_ci_ok = False
+    out["precision_ci_ok"] = bool(precision_ci_ok)
+    out["require_precision_bootstrap_ci"] = bool(require_precision_bootstrap_ci)
+    out["ok"] = bool(
+        soft_usable and out["cost_feasible"] and not soft_floor and precision_ci_ok
     )
     return out
 

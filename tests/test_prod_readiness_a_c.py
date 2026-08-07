@@ -1,4 +1,4 @@
-"""Production readiness A+C: pack schema, dispositions gate, freshness, overlays."""
+"""Prod-shaped pack schema, dispositions gate, ops freshness, overlay promote."""
 
 from __future__ import annotations
 
@@ -28,8 +28,10 @@ def test_prod_floors_file_stricter_than_default() -> None:
         (ROOT / "config" / "oot_floors.prod.yaml").read_text(encoding="utf-8")
     )
     assert int(prod["min_holdout_n"]) > int(demo["min_holdout_n"])
+    assert int(prod["min_pack_n"]) >= int(demo["min_pack_n"])
     assert int(prod["min_proven_positives"]) > int(demo["min_proven_positives"])
     assert float(prod["max_decision_ece"]) <= float(demo["max_decision_ece"])
+    assert "min_pack_n" in prod and "min_pack_n" in demo
 
 
 def test_validate_pack_missing_dispositions_fails(tmp_path: Path) -> None:
@@ -45,11 +47,12 @@ def test_validate_pack_missing_dispositions_fails(tmp_path: Path) -> None:
     orders.to_csv(tmp_path / "orders.csv", index=False)
     (tmp_path / "manifest.yaml").write_text(
         "profile: prod_shaped\nrequire_dispositions: true\n"
-        "floors:\n  min_holdout_n: 100\n  min_proven_positives: 15\n",
+        "floors:\n  min_pack_n: 100\n  min_holdout_n: 100\n  min_proven_positives: 15\n",
         encoding="utf-8",
     )
     result = validate_oot_pack(tmp_path)
     assert result["ok"] is False
+    assert result.get("schema_only") is True
     assert any("dispositions" in e for e in result["errors"])
 
 

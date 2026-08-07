@@ -1,6 +1,10 @@
-# Floors for scripts/eval_oot_pack.py (labeled holdout honesty).
+# Floors for pack schema (validate_oot_pack) + eval_oot_pack (holdout honesty).
 # Pack manifest may override any key under floors.
+#
+# min_pack_n   — schema: minimum rows in pack orders.csv
+# min_holdout_n — eval only: minimum rows after time split (not pack size)
 
+min_pack_n: 60
 min_holdout_n: 30
 min_proven_positives: 3
 min_fraud_proven_average_precision: 0.20

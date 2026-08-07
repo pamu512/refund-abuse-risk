@@ -24,7 +24,7 @@ def time_based_order_split(
     """
     if orders is None or orders.empty:
         empty = orders.iloc[0:0].copy() if orders is not None else pd.DataFrame()
-        return empty, empty, {"mode": "empty", "ok": False}
+        return empty, empty, {"mode": "empty", "ok": False, "temporal_ok": False}
 
     if "event_ts" not in orders.columns:
         n = len(orders)
@@ -34,6 +34,7 @@ def time_based_order_split(
         return train, test, {
             "mode": "positional_fallback",
             "ok": bool(len(train) and len(test)),
+            "temporal_ok": False,
             "reason": "missing_event_ts",
         }
 
@@ -47,6 +48,7 @@ def time_based_order_split(
         return train, test, {
             "mode": "positional_fallback",
             "ok": bool(len(train) and len(test)),
+            "temporal_ok": False,
             "reason": "insufficient_valid_timestamps",
         }
 
@@ -79,11 +81,17 @@ def time_based_order_split(
         test = orders.loc[test_mask].reset_index(drop=True)
         used_adaptive = True
 
+    holdout_days_used = float(hold / pd.Timedelta(days=1))
+    # Honest temporal OOT: requested holdout calendar days, not adaptive/positional.
+    temporal_ok = (not used_adaptive) and (
+        holdout_days_used + 1e-9 >= float(holdout_days) * 0.99
+    )
     stats: dict[str, Any] = {
-        "mode": "time_oot",
+        "mode": "time_oot" if not used_adaptive else "time_oot_adaptive",
         "ok": bool(len(train) >= 1 and len(test) >= 1),
+        "temporal_ok": bool(temporal_ok),
         "holdout_days_requested": float(holdout_days),
-        "holdout_days_used": float(hold / pd.Timedelta(days=1)),
+        "holdout_days_used": holdout_days_used,
         "adaptive": bool(used_adaptive),
         "cut_ts": cut_ts.isoformat() if hasattr(cut_ts, "isoformat") else str(cut_ts),
         "train_n": int(len(train)),

@@ -18,16 +18,23 @@ decision_thresholds:
   hold_review: 50
   auto_deny: 75
 
-# Optional market×vertical ladders (first match wins). Empty = global only.
-# Populate via: python scripts/backtest.py --write-slice-overlays path.yaml
-# (promote-eligible slices only; thin slices skipped).
-# Example:
-#   - market: SG
-#     vertical: food
-#     soft_friction: 32
-#     hold_review: 48
-#     auto_deny: 72
-decision_threshold_overlays: []
+# Market×vertical ladders. Most-specific match wins
+# (market+vertical > market > vertical > bare); YAML order breaks ties.
+# Demo seeds so serve is slice-aware out of the box; replace via
+#   python scripts/backtest.py --write-slice-overlays … && promote_overlays.py
+decision_threshold_overlays:
+  - market: SG
+    vertical: food
+    soft_friction: 32
+    hold_review: 48
+    auto_deny: 72
+  - market: ID
+    vertical: food
+    soft_friction: 30
+    hold_review: 46
+    auto_deny: 70
+# Optional sidecar (merged when inline list is empty):
+# decision_threshold_overlays_file: decision_threshold_overlays.demo.yaml
 
 # Head thresholds — evidence, baseline under_threshold, legacy learning_primary.
 # Soft also used for costed head diagnostics in backtest.
@@ -59,9 +66,17 @@ entity_risk_change_delta: 10.0
 # Calibration / drift / ops promote gates (backtest blocks promote when breached).
 monitoring:
   max_decision_ece: 0.20
+  max_decision_brier: 0.25
+  ece_binning: adaptive
+  min_ece_positives: 5
+  min_ece_bin_n: 3
+  min_proven_for_ece: 5
+  precision_bootstrap_n: 400
+  # Optional: also require bootstrap lo ≥ min_precision_at_soft.
+  require_precision_bootstrap_ci: false
   max_psi_train_test: 0.35
-  # Prod: set max_ops_snapshot_age_hours: 24 and refresh ops_snapshot daily.
-  # max_ops_snapshot_age_hours: 24
+  # Fail-closed when set: missing/stale ops_snapshot.as_of blocks promote.
+  max_ops_snapshot_age_hours: 24
   # Ops proxies from dual-run (CS / overrides / refund $). Null ceiling = ungated.
   max_hold_rate: 0.55
   max_live_override_rate: 0.35
@@ -70,13 +85,6 @@ monitoring:
   max_refund_dollar_per_order: 12.0
   max_cs_queue_depth: 500
   max_shadow_override_rate: 0.40
-  # Seeded from examples/ops_snapshot.example.json; refresh via pull_production_feeds.
-  ops_snapshot:
-    as_of: "2026-08-03T00:00:00Z"
-    source: ops_warehouse_demo
-    cs_queue_depth: 85
-    refund_dollar_per_order: 4.2
-    hold_rate: 0.18
-    live_override_rate: 0.04
-    shadow_override_rate: 0.11
-    refund_grant_rate: 0.62
+  # No baked-in ops_snapshot (stale seeds fail the age gate).
+  # Merge live values via data/ops_snapshot.json (pull_production_feeds /
+  # ingest_ops_snapshot) before promote.

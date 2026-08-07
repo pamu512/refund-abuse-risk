@@ -115,6 +115,65 @@ def pull_sqlite(
     return out
 
 
+def _assert_http_uri_allowed(feed_name: str, uri: str, source: dict[str, Any]) -> None:
+    """Require explicit host allowlist; block literal private/loopback IPs unless listed."""
+    import ipaddress
+    import socket
+
+    parsed = urlparse(uri)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError(f"Feed {feed_name}: http uri scheme must be http/https")
+    host = (parsed.hostname or "").lower()
+    if not host:
+        raise ValueError(f"Feed {feed_name}: http uri missing host")
+    allowed = [str(h).lower() for h in (source.get("allowed_hosts") or [])]
+    if not allowed:
+        raise ValueError(
+            f"Feed {feed_name}: http/s3 https source requires allowed_hosts "
+            "(SSRF guard; e.g. ['feeds.example.com'] or ['127.0.0.1'] for tests)"
+        )
+    host_ok = any(host == a or host.endswith("." + a) for a in allowed)
+    if not host_ok:
+        raise ValueError(
+            f"Feed {feed_name}: host {host!r} not in allowed_hosts={allowed}"
+        )
+    # If host is an IP literal, reject private/link-local unless explicitly allowlisted.
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        ip = None
+    if ip is not None and (
+        ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+    ):
+        if host not in allowed and str(ip) not in allowed:
+            raise ValueError(
+                f"Feed {feed_name}: private/loopback IP {host} not explicitly allowlisted"
+            )
+    # Resolve DNS and block private targets unless hostname was explicitly allowlisted
+    # as that exact name (Downstream must name private endpoints explicitly).
+    if ip is None and not source.get("allow_private_resolved", False):
+        try:
+            infos = socket.getaddrinfo(host, parsed.port or 80, type=socket.SOCK_STREAM)
+        except socket.gaierror:
+            infos = []
+        for info in infos:
+            addr = info[4][0]
+            try:
+                resolved = ipaddress.ip_address(addr)
+            except ValueError:
+                continue
+            if (
+                resolved.is_private
+                or resolved.is_loopback
+                or resolved.is_link_local
+                or resolved.is_reserved
+            ):
+                raise ValueError(
+                    f"Feed {feed_name}: host {host} resolved to private IP {addr}; "
+                    "set allow_private_resolved: true only for trusted internal feeds"
+                )
+
+
 def pull_http(
     feed_name: str,
     source: dict[str, Any],
@@ -125,11 +184,12 @@ def pull_http(
     """
     GET ``source.uri`` (http/https); write bytes to staging extract.
 
-    Optional ``headers`` map; ``filename`` overrides extract name (else from URL path).
+    Requires ``allowed_hosts``. Optional ``headers`` / ``filename``.
     """
     uri = str(source.get("uri") or "").strip()
     if not uri:
         raise ValueError(f"Feed {feed_name}: http source requires uri")
+    _assert_http_uri_allowed(feed_name, uri, source)
     headers = {str(k): str(v) for k, v in (source.get("headers") or {}).items()}
     timeout = float(source.get("timeout_seconds") or 60)
     req = urllib.request.Request(uri, headers=headers, method="GET")

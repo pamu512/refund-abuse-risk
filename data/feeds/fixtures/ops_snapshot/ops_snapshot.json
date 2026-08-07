@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-08-03T00:00:00Z",
+  "as_of": "2026-08-06T04:47:00Z",
   "source": "ops_warehouse_demo",
   "metrics": {
     "cs_queue_depth": 85,

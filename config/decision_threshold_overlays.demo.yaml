@@ -1,0 +1,15 @@
+# Demo / local-serve market×vertical ladders.
+# Promote replaces these via scripts/promote_overlays.py into the operating point,
+# or set DECISION_OVERLAYS_PATH / decision_threshold_overlays_file.
+
+decision_threshold_overlays:
+  - market: SG
+    vertical: food
+    soft_friction: 32
+    hold_review: 48
+    auto_deny: 72
+  - market: ID
+    vertical: food
+    soft_friction: 30
+    hold_review: 46
+    auto_deny: 70

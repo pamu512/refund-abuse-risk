@@ -150,7 +150,7 @@ def test_run_feeds_stage_only(tmp_path: Path) -> None:
 def test_unsupported_source_type(tmp_path: Path) -> None:
     (tmp_path / "data").mkdir()
     cfg = _write_fixture_tree(tmp_path)
-    cfg["feeds"]["ops_snapshot"]["source"]["type"] = "s3"
+    cfg["feeds"]["ops_snapshot"]["source"]["type"] = "ftp"
     report = run_feeds(cfg, only=["ops_snapshot"], root=tmp_path)
     assert report["ok"] is False
     assert "NotImplementedError" in report["feeds"]["ops_snapshot"]["error"]
