@@ -64,7 +64,7 @@ def test_m2_overlay_prefers_more_specific_match() -> None:
             "auto_deny": 75,
         },
         "decision_threshold_overlays": [
-            # Broader market-only listed first — must lose to market×vertical.
+            # Broader market-only listed first - must lose to market×vertical.
             {"market": "SG", "soft_friction": 25, "hold_review": 40, "auto_deny": 70},
             {
                 "market": "SG",

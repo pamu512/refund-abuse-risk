@@ -1,5 +1,5 @@
 # Absolute bounds for tunable head thresholds (score points 0-100).
-# Outside these → reject (not HIL — hard safety).
+# Outside these → reject (not HIL - hard safety).
 bounds:
   head_thresholds.abuse_soft_friction: {min: 10, max: 90}
   head_thresholds.fraud_soft_friction: {min: 10, max: 90}

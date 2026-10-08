@@ -240,7 +240,7 @@ class TwoHeadModel:
             "oof" if abuse_mode == "oof" and fraud_mode == "oof" else "in_sample"
         )
         pattern_y = ((abuse_y >= 1) | (fraud_y >= 1)).astype(int)
-        # Decision objective: proven fraud OR abuse labels — not proxy-minted fraud-only.
+        # Decision objective: proven fraud OR abuse labels - not proxy-minted fraud-only.
         source = (
             labeled["fraud_label_source"].astype(str).str.lower().to_numpy()
             if "fraud_label_source" in labeled.columns

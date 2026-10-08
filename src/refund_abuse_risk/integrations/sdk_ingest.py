@@ -1,6 +1,6 @@
 """Vendor-agnostic SDK signal ingest for device intelligence + claim vision.
 
-Does not depend on Fingerprint/SHIELD/etc. SDKs — accepts JSON envelopes and
+Does not depend on Fingerprint/SHIELD/etc. SDKs - accepts JSON envelopes and
 routes payloads through ``device_vision`` adapters onto orders.
 """
 

@@ -63,7 +63,7 @@ def run_graphbean_lite(
     """
     Fit a lite autoencoder-style model on UV edges; return scored edges/nodes.
 
-    Never auto-enforces — caller writes proposals / features only.
+    Never auto-enforces - caller writes proposals / features only.
     """
     c = {**DEFAULT_GB_CFG, **(cfg or {})}
     edges, _nodes_uv = score_uv_bipartite(history, bipartite_cfg)

@@ -1,7 +1,7 @@
 # Shadow → live refund-effect overrides (DoorDash-style control plane).
 version: "0.1.0"
 enabled: true
-# global kill switch — when true, only base tier→effect mapping applies
+# global kill switch - when true, only base tier→effect mapping applies
 kill_switch: false
 
 # Rules evaluated in order; first match wins. mode: shadow | live
@@ -40,7 +40,7 @@ rules:
     effect: refund_step_up
     reason_code: EFFECT_DEVICE_RISK
 
-# P2b — Uber-style graduated challenges (orthogonal to refund_effect).
+# P2b - Uber-style graduated challenges (orthogonal to refund_effect).
 # Tier defaults: soft→payment_verify, hold/deny→identity_verify.
 challenges_enabled: true
 challenge_rules:

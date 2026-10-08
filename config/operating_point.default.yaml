@@ -12,7 +12,7 @@ score_display:
   abuse: 0.5
   fraud: 0.5
 
-# Joint decision ladder — primary cutoffs (no retrain to move these).
+# Joint decision ladder - primary cutoffs (no retrain to move these).
 decision_thresholds:
   soft_friction: 35
   hold_review: 50
@@ -36,7 +36,7 @@ decision_threshold_overlays:
 # Optional sidecar (merged when inline list is empty):
 # decision_threshold_overlays_file: decision_threshold_overlays.demo.yaml
 
-# Head thresholds — evidence, baseline under_threshold, legacy learning_primary.
+# Head thresholds - evidence, baseline under_threshold, legacy learning_primary.
 # Soft also used for costed head diagnostics in backtest.
 head_thresholds:
   target_pattern_recall: 0.98
@@ -81,7 +81,7 @@ monitoring:
   max_hold_rate: 0.55
   max_live_override_rate: 0.35
   max_refund_grant_rate: 0.90
-  # Demo $ / CS ceilings — retune from live ops_snapshot cron.
+  # Demo $ / CS ceilings - retune from live ops_snapshot cron.
   max_refund_dollar_per_order: 12.0
   max_cs_queue_depth: 500
   max_shadow_override_rate: 0.40

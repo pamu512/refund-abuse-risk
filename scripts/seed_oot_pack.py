@@ -60,7 +60,7 @@ def _seed_demo(args: argparse.Namespace) -> dict:
         "n_orders": int(len(orders)),
         "holdout_days": 7,
         "floors": floors,
-        "notes": "Synthetic/demo pack — not production lift proof.",
+        "notes": "Synthetic/demo pack - not production lift proof.",
     }
     (pack / "manifest.yaml").write_text(
         yaml.safe_dump(manifest, sort_keys=False, default_flow_style=False),
@@ -73,7 +73,7 @@ def _seed_prod_shaped(args: argparse.Namespace) -> dict:
     """
     Build a prod_shaped fixture: enough orders + dispositions for schema floors.
 
-    Metrics on this pack are still synthetic — validate_oot_pack is the CI gate;
+    Metrics on this pack are still synthetic - validate_oot_pack is the CI gate;
     eval_oot_pack against prod AP floors may fail and that is expected.
     """
     pack = args.pack_dir
@@ -189,7 +189,7 @@ def _seed_prod_shaped(args: argparse.Namespace) -> dict:
         "holdout_days": 7,
         "notes": (
             "Prod-shaped schema fixture with dispositions. "
-            "Not production lift proof — eval_oot_pack prod AP may fail on synth."
+            "Not production lift proof; eval_oot_pack prod AP may fail on synth."
         ),
     }
     (pack / "manifest.yaml").write_text(

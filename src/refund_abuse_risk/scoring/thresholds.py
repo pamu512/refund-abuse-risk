@@ -105,7 +105,7 @@ def threshold_at_recall_costed(
             and fp_dollar_mean > float(max_fp_refund_dollars_mean) + 1e-12
         ):
             continue
-        # Feasible — keep highest t (first in descending scan).
+        # Feasible - keep highest t (first in descending scan).
         best_t = float(t)
         best_stats = {"recall": rec, "precision": prec, "fp_rate": fpr}
         if fp_dollar_mean is not None:
@@ -113,7 +113,7 @@ def threshold_at_recall_costed(
         break
 
     if best_t is None:
-        # Do NOT return a usable cutoff — recall-only is diagnostic only.
+        # Do NOT return a usable cutoff - recall-only is diagnostic only.
         fallback = threshold_at_recall(y, s, target_recall)
         info["reason"] = "cost_constraints_infeasible"
         info["recall_only_threshold"] = fallback
@@ -347,7 +347,7 @@ def recommend_head_thresholds(
         "target_pattern_recall": float(target_recall),
         "min_precision_at_soft": min_precision_at_soft,
         "max_fp_rate_at_soft": max_fp_rate_at_soft,
-        # Diagnostic defaults only when costed soft is unusable — ok stays False.
+        # Diagnostic defaults only when costed soft is unusable - ok stays False.
         "abuse_soft_friction": (
             float(abuse_soft) if abuse_soft_usable else _or(abuse_hold, 35.0)
         ),

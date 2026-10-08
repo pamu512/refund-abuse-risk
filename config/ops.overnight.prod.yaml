@@ -1,4 +1,4 @@
-# Production overnight profile — Downstream cutover entrypoint.
+# Production overnight profile - Downstream cutover entrypoint.
 # Usage: OPS_OVERNIGHT_PROFILE=config/ops.overnight.prod.yaml ./scripts/ops_overnight.sh
 # Or: python scripts/ops_overnight.py --profile config/ops.overnight.prod.yaml --require-promote
 
@@ -60,7 +60,7 @@ steps:
       - "{oot_pack}"
       - --floors
       - "{floors}"
-    # Hard-fail: live packs must clear prod floors. Synth fixtures will abort here — expected.
+    # Hard-fail: live packs must clear prod floors. Synth fixtures will abort here - expected.
 
   - id: backtest
     argv:

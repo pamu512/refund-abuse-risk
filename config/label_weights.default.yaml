@@ -8,14 +8,14 @@ abuse_weak_positive_weight: 0.6
 # Negatives from weak-policy auto-approvals are down-weighted (not clean negatives).
 weak_policy_negative_weight: 0.3
 clean_negative_weight: 1.0
-# Equalize pos/neg mass after provenance weights. Default OFF — fights calibration /
+# Equalize pos/neg mass after provenance weights. Default OFF - fights calibration /
 # proven vs proxy weighting (audit H2). Opt in only for extreme imbalance experiments.
 class_balance: false
 
-# P0 discovery honesty — unsupervised labels must not dominate training.
+# P0 discovery honesty - unsupervised labels must not dominate training.
 discovery:
   # asof_daily: UV edges from history before each order day (no future leak).
-  # batch: full-history UV (legacy; leaks — not for promote-quality trains).
+  # batch: full-history UV (legacy; leaks - not for promote-quality trains).
   mint_mode: asof_daily
   max_fraction_of_rows: 0.05
   # discovery / (discovery + other fraud+) ≤ this after cap
@@ -23,7 +23,7 @@ discovery:
   iforest_max_fraction: 0.02
   self_train_max_fraction: 0.01
 
-# High-confidence fraud proxy — requires support + concentration, not rate alone.
+# High-confidence fraud proxy - requires support + concentration, not rate alone.
 proxy_rules:
   min_device_cluster_size: 4
   min_accounts_per_device: 3

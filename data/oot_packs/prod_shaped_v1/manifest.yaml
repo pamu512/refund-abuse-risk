@@ -14,5 +14,5 @@ floors:
 n_orders: 120
 n_proven_dispositions: 15
 holdout_days: 7
-notes: "Prod-shaped schema fixture with dispositions. Not production lift proof \u2014\
-  \ eval_oot_pack prod AP may fail on synth."
+notes: Prod-shaped schema fixture with dispositions. Not production lift proof; eval_oot_pack
+  prod AP may fail on synth.

@@ -11,28 +11,28 @@
 | **P2b** | Risk-challenge UX effects | **Shipped:** `RiskChallenge` + `challenge_rules` on score path (orthogonal to `RefundEffect`) |
 | **Cutover** | Chargeback maturity / ORC process | Downstream; not an in-repo feature |
 
-## P0 — Segment anomaly (propose only)
+## P0 - Segment anomaly (propose only)
 
 - Input: orders with `event_ts`, `market`, `vertical`, refund/claim signal
 - Metric: daily refund rate per `market|vertical` (optional claim_reason)
 - Detector: moving-window z-score with baseline / gap / test day (DoorDash-shaped)
-- Output: `data/proposed_rules/*.yaml` + JSON report — **never** written into live OP or effect rules automatically
+- Output: `data/proposed_rules/*.yaml` + JSON report - **never** written into live OP or effect rules automatically
 - Overnight: optional step after backtest
 
-## P1a — Decision archive
+## P1a - Decision archive
 
 - SQLite append-only: order_id, scores, tier, effect, overlay, model/policy versions, reason_codes
 - Hook: `score_feature_row` when `DECISION_ARCHIVE_PATH` set (or explicit archive arg)
 - Query helper for CS/DS
 
-## P1b — Weak-label factory
+## P1b - Weak-label factory
 
 - Pure-Python labeling functions (no Snorkel dep): abstain / 0 / 1
 - Combine via majority of non-abstain; write `abuse_label_weak` / discovery source
 - **Never** overwrite `fraud_label_source=proven`
 - Proven-primary metrics unchanged
 
-## P2a — GraphBEAN-lite
+## P2a - GraphBEAN-lite
 
 - Input: history with user/vendor/market/vertical/`is_refund`
 - Model: Ridge feature decoder + degree structure residual on `score_uv_bipartite` edges
@@ -40,7 +40,7 @@
 - Script: `scripts/run_graphbean_lite.py` → `data/proposed_rules/graphbean_lite.*`
 - Ceiling: linear recon; upgrade = Grab GraphBEAN / RGCN on same edge schema
 
-## P2b — Risk challenges
+## P2b - Risk challenges
 
 - Enum: `none` / `payment_verify` / `identity_verify` / `in_app_capture`
 - Config: `challenge_rules` + `challenges_enabled` in effect_rules YAML

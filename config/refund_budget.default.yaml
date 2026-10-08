@@ -4,7 +4,7 @@ enabled: true
 
 # Rolling window for budget features (must exist on the order/feature row).
 window_days: 30
-# Soft caps — downstream may enforce stricter policy.
+# Soft caps - downstream may enforce stricter policy.
 max_auto_grants_30d: 3
 max_refund_gmv_pct_30d: 0.35
 max_refund_count_30d: 5

@@ -12,7 +12,7 @@ from refund_abuse_risk.graph.bipartite import (
     zero_bipartite_features,
 )
 
-# Features used to mint proxy fraud labels — excluded from fraud head when
+# Features used to mint proxy fraud labels - excluded from fraud head when
 # label_weights.proxy_rules.exclude_mint_features_from_fraud_head is true.
 PROXY_MINT_FEATURE_COLUMNS: tuple[str, ...] = (
     "device_cluster_size",
@@ -252,7 +252,7 @@ FRAUD_FEATURE_COLUMNS: list[str] = [
 ]
 
 
-# Rate supports used inside apply_proxy_fraud_labels — hold out of fraud head with mint.
+# Rate supports used inside apply_proxy_fraud_labels - hold out of fraud head with mint.
 _PROXY_MINT_SUPPORT_COLUMNS: tuple[str, ...] = (
     "user_refund_rate_30d",
     "user_orders_30d",
@@ -551,7 +551,7 @@ def _related_user_ids(
                     cid = clusters.iloc[0]
                     related |= set(d.loc[d["cluster_id"] == cid, "user_id"].astype(str))
 
-    # Collusion ring peers only — same driver+vendor avoids popular-driver fanout.
+    # Collusion ring peers only - same driver+vendor avoids popular-driver fanout.
     if history is not None and not history.empty and driver_id and vendor_id:
         h = history
         mask = (h["driver_id"].astype(str) == str(driver_id)) & (
