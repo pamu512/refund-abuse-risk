@@ -1,4 +1,4 @@
-# Market × vertical slice hardening — design
+# Market × vertical slice hardening - design
 
 Approved 2026-08-04. Option 2: eval + seeded overlays + policy features. No per-slice models.
 
@@ -11,7 +11,7 @@ Approved 2026-08-04. Option 2: eval + seeded overlays + policy features. No per-
 ## Changes
 
 ### Config
-- `config/vertical_policy.default.yaml` — defaults by vertical; optional market overlays.
+- `config/vertical_policy.default.yaml` - defaults by vertical; optional market overlays.
 - `load_vertical_policy()` in `config.py`.
 
 ### Features
