@@ -34,7 +34,7 @@ def test_bipartite_as_of_ignores_future_refunds() -> None:
                 "is_refund": 0,
                 "event_ts": "2026-07-02T00:00:00Z",
             },
-            # Future concentrated refunds — must not leak into earlier score.
+            # Future concentrated refunds - must not leak into earlier score.
             {
                 "order_id": "h3",
                 "user_id": "U",

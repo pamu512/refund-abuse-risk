@@ -160,7 +160,7 @@ def main() -> None:
     proven_y = proven_mask.astype(int).to_numpy()
     source = scored["fraud_label_source"].astype(str).str.lower()
     proxy_only = source.eq("proxy") & (fraud_y >= 1) & (abuse_y < 1) & (proven_y < 1)
-    # Promote ladder: proven fraud OR abuse — exclude proxy-only fraud mass.
+    # Promote ladder: proven fraud OR abuse - exclude proxy-only fraud mass.
     ladder_y = ((proven_y >= 1) | (abuse_y >= 1)).astype(int)
     ladder_y = np.where(proxy_only.to_numpy(), 0, ladder_y).astype(int)
     if int(ladder_y.sum()) < 3:
@@ -381,7 +381,7 @@ def main() -> None:
         for k, v in recommended_by_slice.items()
     }
 
-    # Calibration / drift (train scores vs holdout) — ECE on decision, PSI train→test.
+    # Calibration / drift (train scores vs holdout) - ECE on decision, PSI train→test.
     # Ops gates finalized after dual-run effects below.
     train_feat = build_order_feature_frame(train_orders, history, devices, users=users)
     train_feat = apply_proxy_fraud_labels(train_feat, label_weights)

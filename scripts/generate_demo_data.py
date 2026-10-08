@@ -23,7 +23,7 @@ def main() -> None:
     def add_user(uid: str, signup: datetime) -> None:
         user_rows.append({"user_id": uid, "signup_ts": signup.isoformat()})
 
-    # Clean users — mature, high LTV, rare refunds
+    # Clean users - mature, high LTV, rare refunds
     for i in range(20):
         uid, did, vid, dev = f"U{i}", f"D{i%5}", f"V{i%4}", f"DEV{i}"
         add_user(uid, base - timedelta(days=180 + i))
@@ -77,7 +77,7 @@ def main() -> None:
             }
         )
 
-    # Serial claimant abuse — mature enough for count/rate gates + high LTV burn
+    # Serial claimant abuse - mature enough for count/rate gates + high LTV burn
     for i in range(15):
         uid, did, vid, dev = f"UA{i}", f"DA{i%3}", f"VA{i%3}", f"DEVA{i}"
         add_user(uid, base - timedelta(days=60 + i))
@@ -289,7 +289,7 @@ def main() -> None:
             }
         )
 
-    # New user with 1-2 refunds, still positive LTV — isolated UVD, should NOT hard-gate
+    # New user with 1-2 refunds, still positive LTV - isolated UVD, should NOT hard-gate
     for i in range(5):
         uid, did, vid, dev = f"UN{i}", f"DN{i}", f"VN{i}", f"DEVN{i}"
         add_user(uid, base + timedelta(days=20))  # signed up ~5 days before scoring
@@ -342,7 +342,7 @@ def main() -> None:
             }
         )
 
-    # New user attached to fraud UVD/device ring — early pass denied via related/combined
+    # New user attached to fraud UVD/device ring - early pass denied via related/combined
     for i in range(3):
         uid = f"UNR{i}"
         did, vid, dev = "DF0", "VF0", f"DEVF{i%2}"
@@ -395,7 +395,7 @@ def main() -> None:
             }
         )
 
-    # Early-life LTV burn — new account, almost all GMV refunded → hard gate
+    # Early-life LTV burn - new account, almost all GMV refunded → hard gate
     for i in range(4):
         uid, did, vid, dev = f"UB{i}", f"D{i%5}", f"V{i%4}", f"DEVB{i}"
         add_user(uid, base + timedelta(days=22))
@@ -589,7 +589,7 @@ def main() -> None:
             "disposition": "investigator_cleared",
             "disposition_ts": (base + timedelta(days=33)).isoformat(),
         },
-        # Too early vs lag — should be skipped by ingest.
+        # Too early vs lag - should be skipped by ingest.
         {
             "order_id": "O-ABUSE-0",
             "disposition": "manual_denied_abuse",

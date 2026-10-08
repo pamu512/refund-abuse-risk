@@ -1,4 +1,4 @@
-# Overnight ops profile — declarative job order for scripts/ops_overnight.py
+# Overnight ops profile - declarative job order for scripts/ops_overnight.py
 # Demo-safe defaults. Override via env / CLI for production (see docs/OPS_RUNBOOK.md).
 
 version: 1
@@ -96,5 +96,5 @@ steps:
       - python
       - scripts/run_tuner.py
       - --list-pending
-    # Informational — never auto-approves
+    # Informational - never auto-approves
     optional: true

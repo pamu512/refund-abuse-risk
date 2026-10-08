@@ -198,7 +198,7 @@ def test_p1a_score_path_archives_when_passed(tmp_path: Path) -> None:
         "vendor_id": "V",
         "device_id": "DEV",
     }
-    # Feature columns required by hard gates / evidence — zeros OK for archive test.
+    # Feature columns required by hard gates / evidence - zeros OK for archive test.
     for k in (
         "user_refund_rate_30d",
         "user_orders_30d",
@@ -209,13 +209,13 @@ def test_p1a_score_path_archives_when_passed(tmp_path: Path) -> None:
     stub = _Stub()
     stub.abuse_model = object()  # mark "fitted" for type path unused
     stub.fraud_model = object()
-    # score_feature_row calls model.predict_proba only if models set — stub overrides.
+    # score_feature_row calls model.predict_proba only if models set - stub overrides.
     try:
         snap = score_feature_row(
             row, stub, update_baselines=False, decision_archive=arch
         )
     except Exception:
-        # If feature/policy path needs more columns, append directly — archive contract.
+        # If feature/policy path needs more columns, append directly - archive contract.
         arch.append_snapshot(
             OrderRiskSnapshot(
                 order_id="ARC-1",

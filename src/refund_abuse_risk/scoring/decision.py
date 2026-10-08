@@ -299,7 +299,7 @@ def recommend_decision_thresholds(
     def _or(v: float | None, default: float) -> float:
         return float(default if v is None else v)
 
-    # Diagnostic ladder only when costed soft is unusable — never promote these.
+    # Diagnostic ladder only when costed soft is unusable - never promote these.
     soft_val = float(soft) if soft_usable else _or(hold, 35.0)
     raw = {
         "soft_friction": soft_val,

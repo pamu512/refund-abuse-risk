@@ -85,7 +85,7 @@ def _qa_sample(dispositions: pd.DataFrame, rng: np.random.Generator, n: int = 50
 
 
 def _sdk_events_for_orders(orders: pd.DataFrame, rng: np.random.Generator) -> list[dict]:
-    """Realistic confidence draws (Beta) — not flat 70–95."""
+    """Realistic confidence draws (Beta) - not flat 70–95."""
     events: list[dict] = []
     for _, row in orders.iterrows():
         oid = str(row["order_id"])

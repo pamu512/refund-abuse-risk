@@ -478,7 +478,7 @@ def run_feeds(
                     name, staged, fcfg, cfg, root=root, dry_run=dry_run
                 )
             report["feeds"][name] = entry
-        except Exception as exc:  # noqa: BLE001 — surface per-feed errors in report
+        except Exception as exc:  # noqa: BLE001 - surface per-feed errors in report
             report["ok"] = False
             report["feeds"][name] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
     return report
