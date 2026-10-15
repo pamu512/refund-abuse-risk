@@ -1,8 +1,9 @@
-"""GraphBEAN-lite: bipartite node+edge reconstruction anomaly (no GNN).
+"""Ridge feature decoder (graphbean_lite): bipartite node+edge recon anomaly.
 
-ponytail: Ridge feature-decoder + degree structure residual on the UV edge
-table. Ceiling = linear reconstruction; upgrade = Grab GraphBEAN / RGCN on the
-same edge schema. Outputs node/edge scores + MO tags for shadow actioning.
+Not a GNN. sklearn Ridge feature-decoder + degree structure residual on the UV
+edge table. Ceiling = linear reconstruction; upgrade path = Grab GraphBEAN /
+RGCN on the same edge schema. Outputs node/edge scores + MO tags for shadow
+actioning only.
 """
 
 from __future__ import annotations

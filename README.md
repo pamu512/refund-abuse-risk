@@ -1,6 +1,6 @@
 # refund-abuse-risk
 
-Graph/ML toolkit for **refund abuse** and **fraud** scoring on food delivery and quick commerce.
+scikit-learn two-head scoring toolkit for **refund abuse** and **fraud** on food delivery and quick commerce demo CSVs (`abuse_score` / `fraud_score`).
 
 It turns order, history, device, and closed-loop label feeds into:
 
@@ -14,6 +14,8 @@ It turns order, history, device, and closed-loop label feeds into:
 **Status (2026-08-06):** In-repo toolkit with prod-shaped OOT contracts, overlay promote/rollback, HTTP/S3 feed drivers, `ops.overnight.prod.yaml`, and minimal `serve_api.py`. Live warehouse URIs / real chargebacks remain Downstream — [`docs/CUTOVER.md`](docs/CUTOVER.md).
 
 **Internal quality ratings are private** — do not publish letter grades or rubric scores in README/status/comms. See [`docs/GRADING.md`](docs/GRADING.md).
+
+**Not a live GNN / graph database.** `graphbean_lite` is a Ridge feature decoder on UV edges (shadow proposals only), not GraphBEAN/RGCN.
 
 ---
 
@@ -172,7 +174,7 @@ Labels: `abuse_label`, `fraud_label`, `fraud_label_source` (`proven` / `proxy` /
 ## What this is not
 
 - Not a payment blocker or account-suspension system  
-- Not a live GNN / graph database  
+- Not a live GNN / graph database (`graphbean_lite` = Ridge feature decoder only)  
 - Not a case-management UI  
 - Not a legal “fraud proven” workflow (it **consumes** those labels)  
 - Not an attempt to catch every novel attack with YAML rules

@@ -28,7 +28,7 @@ Single-process claim cache and file OP are **design**, not unfinished scaffoldin
 |---|---|---|
 | `schemas` | Snapshot / evidence / tier / effect types | Persistence |
 | `features` | PIT order feature frame / row builders | Labels, model fit |
-| `graph` | UV bipartite discovery, as-of + null | Serve-path scoring |
+| `graph` | UV bipartite discovery + Ridge `graphbean_lite` decoder (not a GNN), as-of + null | Serve-path scoring |
 | `labels` | Disposition / weight contracts | Feed I/O |
 | `model` | Two-head train / predict / class balance | Threshold promote |
 | `scoring` | Policy, decision stacker, thresholds, Brier/adaptive ECE, Wilson+bootstrap precision CI, PSI, calibrator | Training loops |
