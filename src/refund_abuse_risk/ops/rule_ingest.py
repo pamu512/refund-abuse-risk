@@ -428,7 +428,7 @@ def run_ingest(
     for path in files:
         try:
             raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-        except Exception as exc:  # noqa: BLE001 — surface in summary / strict
+        except Exception as exc:  # noqa: BLE001 - surface in summary / strict
             parse_errors.append(f"{path}: {exc}")
             continue
         proposals.extend(parse_proposals(raw, source_path=str(path)))

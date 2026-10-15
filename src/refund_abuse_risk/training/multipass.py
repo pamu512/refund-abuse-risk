@@ -347,7 +347,7 @@ def train_multipass(
     scored: pd.DataFrame | None = None
     dcfg = discovery_config(label_weights)
     uv_edges = None
-    # Batch mode only: precompute full-history edges (leaky — opt-in via config).
+    # Batch mode only: precompute full-history edges (leaky - opt-in via config).
     if (
         str(dcfg.get("mint_mode", "asof_daily")).lower() == "batch"
         and history is not None

@@ -1,4 +1,4 @@
-# Ops runbook — overnight, promote, troubleshoot
+# Ops runbook - overnight, promote, troubleshoot
 
 Day-to-day ops for the toolkit. Requirements / tuning depth: [MANUAL.md](MANUAL.md). Live wiring: [CUTOVER.md](CUTOVER.md). Package map: [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -118,16 +118,16 @@ python scripts/ingest_ops_snapshot.py --help   # then apply latest JSON
 
 | Symptom | First checks |
 |---|---|
-| Spike false denies | MANUAL §8.1 — hard_gated vs score-driven |
-| Ring missed | MANUAL §8.2 — devices / labels / thresholds |
-| Stale claim scores | MANUAL §8.3 — precompute + lifecycle |
+| Spike false denies | MANUAL §8.1 - hard_gated vs score-driven |
+| Ring missed | MANUAL §8.2 - devices / labels / thresholds |
+| Stale claim scores | MANUAL §8.3 - precompute + lifecycle |
 | Overnight abort at feeds | warehouse URI / sqlite path / schema |
 | Overnight abort at OOT | pack labels empty or floors too strict for demo |
 | Promote blocked on `$` FP | `max_fp_refund_dollars_mean` vs amount column |
 
 ---
 
-## 6. SLOs (toolkit ops — not loss $)
+## 6. SLOs (toolkit ops - not loss $)
 
 These are **process** SLOs for the scoring toolkit. Fraud-loss SLOs are Downstream.
 
@@ -145,7 +145,7 @@ These are **process** SLOs for the scoring toolkit. Fraud-loss SLOs are Downstre
 ## 7. Prod-shaped contracts + overlay promote
 
 ```bash
-# Schema contract (CI) — not lift
+# Schema contract (CI) - not lift
 python scripts/seed_oot_pack.py --profile prod_shaped   # if regenerating
 python scripts/validate_oot_pack.py --pack-dir data/oot_packs/prod_shaped_v1
 
@@ -166,7 +166,7 @@ python scripts/promote_overlays.py --overlays examples/csv_demo/slice_overlays.y
 # PIT leakage gate (also in GitHub Actions CI)
 python scripts/check_pit_replay.py
 
-# P0 — segment refund anomalies → proposed rules (shadow only; never auto-merge)
+# P0 - segment refund anomalies → proposed rules (shadow only; never auto-merge)
 python scripts/detect_segment_anomalies.py --orders data/orders.csv
 # → data/proposed_rules/segment_anomalies.proposed.yaml
 
@@ -179,26 +179,26 @@ python scripts/ingest_proposed_rules.py --config config/rule_ingest.default.yaml
 # Overnight step (also needs enabled: true in rule_ingest config):
 # INGEST_PROPOSED_RULES=1 python scripts/ops_overnight.py
 
-# P1a — decision archive (set on serve / score path)
+# P1a - decision archive (set on serve / score path)
 export DECISION_ARCHIVE_PATH=data/decision_archive.db
 python scripts/query_decision_archive.py --limit 20
 
-# P1b — weak LF labels (proven rows untouched)
+# P1b - weak LF labels (proven rows untouched)
 python scripts/mint_weak_labels.py --with-features
 
-# P2a — GraphBEAN-lite UV recon → proposed actions (shadow only; never auto-merge)
+# P2a - GraphBEAN-lite UV recon → proposed actions (shadow only; never auto-merge)
 python scripts/run_graphbean_lite.py --history data/history.csv
 # → data/proposed_rules/graphbean_lite.proposed.yaml
 # Unknown kinds (e.g. graphbean_edge) are skipped by ingest until mapped to overlay/effect/challenge.
 
-# P2b — risk challenges live under config/effect_rules.default.yaml (challenge_rules);
+# P2b - risk challenges live under config/effect_rules.default.yaml (challenge_rules);
 # score path fills risk_challenge / shadow_risk_challenge on OrderRiskSnapshot.
 ```
 
 **CI green ≠ production lift.** `validate_oot_pack` / pytest only prove schema + disposition
 contracts (`min_pack_n`, proven counts). Proven AP / ECE / `temporal_ok` require a **live**
 OOT pack under `eval_oot_pack` + `oot_floors.prod.yaml`. Synth `prod_shaped_v1` may fail
-those floors — expected.
+those floors; expected.
 
 ---
 
@@ -212,7 +212,7 @@ OPS_OVERNIGHT_PROFILE=config/ops.overnight.prod.yaml ./scripts/ops_overnight.sh 
 # Overlay promote after non-empty write
 PROMOTE_OVERLAYS=1 python scripts/ops_overnight.py --profile config/ops.overnight.prod.yaml
 
-# HTTP / pre-signed S3 feeds — see config/feeds.http.example.yaml
+# HTTP / pre-signed S3 feeds; see config/feeds.http.example.yaml
 python scripts/pull_production_feeds.py --config config/feeds.http.example.yaml
 
 # Minimal claim-path API

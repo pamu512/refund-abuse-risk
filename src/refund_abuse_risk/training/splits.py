@@ -1,4 +1,4 @@
-"""Train/holdout splits — time-based OOT is the primary evaluation cut."""
+"""Train/holdout splits - time-based OOT is the primary evaluation cut."""
 
 from __future__ import annotations
 

@@ -89,7 +89,7 @@ def test_pull_s3_native_requires_boto3_or_raises() -> None:
         with pytest.raises(NotImplementedError, match="boto3"):
             pull_s3("x", {"uri": "s3://bucket/key.csv"}, root=ROOT)
     else:
-        pytest.skip("boto3 installed — native s3 path needs live credentials")
+        pytest.skip("boto3 installed - native s3 path needs live credentials")
 
 
 def test_score_api_auth_and_claim_path() -> None:

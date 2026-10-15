@@ -82,7 +82,7 @@ def mint_weak_labels_from_uv_anomaly(
             continue
         out.at[idx, "abuse_label"] = 1
         out.at[idx, "abuse_label_weak"] = 1
-        # Weak fraud only — never touches proven (continued above).
+        # Weak fraud only - never touches proven (continued above).
         out.at[idx, "fraud_label"] = 1
         out.at[idx, "fraud_label_source"] = "discovery"
         minted += 1

@@ -1,4 +1,4 @@
-"""Refund-budget pressure — advisory fields + optional effect severity floor."""
+"""Refund-budget pressure - advisory fields + optional effect severity floor."""
 
 from __future__ import annotations
 

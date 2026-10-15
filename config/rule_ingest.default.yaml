@@ -1,4 +1,4 @@
-# Proposed-rule ingest — merge proposals into OP / effect_rules (no portal).
+# Proposed-rule ingest - merge proposals into OP / effect_rules (no portal).
 # Default: disabled + shadow-only. See docs/OPS_RUNBOOK.md.
 version: 1
 enabled: false                 # master switch; false = no-op even if CLI run

@@ -1,6 +1,6 @@
-# Promote / monitoring / effect hardening — design
+# Promote / monitoring / effect hardening - design
 
-> Privacy: historical filename retained for links. Internal quality ratings are private — see [docs/GRADING.md](../../GRADING.md).
+> Privacy: historical filename retained for links. Internal quality ratings are private - see [docs/GRADING.md](../../GRADING.md).
 
 Scope: tighten Phase 1–3 surfaces already shipped. No GraphBEAN, no live SDK.
 

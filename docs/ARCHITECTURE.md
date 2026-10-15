@@ -1,10 +1,10 @@
-# Architecture — refund-abuse-risk
+# Architecture - refund-abuse-risk
 
 Toolkit architecture for train ≈ serve honesty. Downstream owns the HTTP/API/queue runtime.
 
 Companion: [MANUAL.md](MANUAL.md) · [OPS_RUNBOOK.md](OPS_RUNBOOK.md) · [CUTOVER.md](CUTOVER.md) · [GRADING.md](GRADING.md)
 
-Internal quality ratings / letter grades are private — see [GRADING.md](GRADING.md). Score this repo by shipped contracts and gates, not public grade claims.
+Internal quality ratings / letter grades are private: see [GRADING.md](GRADING.md). Score this repo by shipped contracts and gates, not public grade claims.
 
 ---
 
@@ -69,9 +69,9 @@ lifecycle / entity-risk event
 
 Rules:
 
-1. **No live graph walks on the sync claim path** — discovery is batch / as-of.
+1. **No live graph walks on the sync claim path**; discovery is batch / as-of.
 2. **Heads explain; `decision_score` decides** when `decision_mode: decision_primary`.
-3. **Hard gates** only for strong labels / policy caps — not rate heuristics.
+3. **Hard gates** only for strong labels / policy caps; not rate heuristics.
 4. Every Downstream decision should log `model_version` + `policy_version`.
 
 ---

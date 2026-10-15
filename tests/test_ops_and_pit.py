@@ -99,7 +99,7 @@ def test_pit_feature_replay_ignores_future_history() -> None:
                 "claim_reason": "quality",
                 "event_ts": "2026-07-05T00:00:00Z",
             },
-            # Future — must not affect PIT features.
+            # Future - must not affect PIT features.
             {
                 "order_id": "H_future",
                 "user_id": "U1",
@@ -125,7 +125,7 @@ def test_pit_feature_replay_ignores_future_history() -> None:
     ]
     full = build_order_feature_row(order, history, devices)
     replay = build_order_feature_row(order, past, devices)
-    # Top train/serve-sensitive columns — must be bit-identical under PIT replay.
+    # Top train/serve-sensitive columns - must be bit-identical under PIT replay.
     keys = [
         "user_orders_30d",
         "user_refund_count_30d",

@@ -37,7 +37,7 @@ def lf_claim_with_thin_history(row: dict[str, Any]) -> int | None:
     lifetime = row.get("user_lifetime_orders")
     if lifetime is None or (isinstance(lifetime, float) and pd.isna(lifetime)):
         return None
-    # First-/early-order claims are noisier — weak positive only when very thin.
+    # First-/early-order claims are noisier - weak positive only when very thin.
     if float(lifetime) <= 2.0:
         return 1
     return 0

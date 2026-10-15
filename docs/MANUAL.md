@@ -1,4 +1,4 @@
-# refund-abuse-risk — user & ops manual
+# refund-abuse-risk - user & ops manual
 
 How to **use** the repo, what you **need**, and how to **tune** the model.
 
@@ -93,7 +93,7 @@ refresh_order(order, history, devices, model, cache, users=users, event="deliver
 # Optional SDK at claim:
 # refresh_order(..., device_sdk_event=..., vision_sdk_event=...)
 
-snap = claim_path_read(order_id, cache)  # sync claim path — cache only
+snap = claim_path_read(order_id, cache)  # sync claim path - cache only
 ```
 
 **Claim-path contract:** score async on lifecycle / entity-risk change; claim API only reads the snapshot. Do not walk the graph on the sync path.
@@ -159,7 +159,7 @@ Tune in this order. Change **one family** per cycle. Always re-run backtest / OO
 | Feature code / head hyperparams | **Yes** |
 | New markets with different base rates | Yes (or overlays first) |
 
-### 4.2 Threshold tuning (no retrain) — primary path
+### 4.2 Threshold tuning (no retrain) - primary path
 
 Edit `config/operating_point.default.yaml`:
 
@@ -187,7 +187,7 @@ python scripts/run_tuner.py --approve <id>   # or --reject <id>
 
 Guardrails (`config/policy_guardrails.default.yaml`):
 
-- `auto_apply.max_abs_delta` — max auto step (default 5 score points)  
+- `auto_apply.max_abs_delta` - max auto step (default 5 score points)  
 - Deny keys often capped tighter (`max_abs_delta_by_key`)  
 - Outside `bounds.*` → hard reject (not HIL)
 
@@ -197,14 +197,14 @@ Guardrails (`config/policy_guardrails.default.yaml`):
 
 **Recall too low at soft**
 
-1. `backtest.py --tune` — see recommended soft.  
+1. `backtest.py --tune`; see recommended soft.  
 2. If already near floor and recall still low → **retrain** (labels/features), don’t invent hard gates.  
 3. Check proven vs proxy/discovery slices separately.
 
 **Too many soft/holds on clean users**
 
 1. Raise `decision_thresholds.soft_friction` / `hold_review` slightly.  
-2. Inspect FPs — tighten proxy rules + retrain if proxies leak.  
+2. Inspect FPs; tighten proxy rules + retrain if proxies leak.  
 3. Set / tighten `max_fp_refund_dollars_mean`.  
 4. Do **not** reintroduce rate hard gates.
 
@@ -238,7 +238,7 @@ Important flags:
 | Flag | Meaning |
 |---|---|
 | `--feature-source serve` | **Default.** Train≈serve (required for honesty) |
-| `--feature-source frame` | Precomputed frame — demo only, not parity |
+| `--feature-source frame` | Precomputed frame; demo only, not parity |
 | `--no-closed-loop` | Skip labeled/SDK overlays (debug) |
 | `--passes N` | Multipass UV→supervised (early-stops on flat decision mean) |
 | `--oot-days 7` | Time holdout for primary metrics |
@@ -252,7 +252,7 @@ Bump `model_version` in operating point when promoting a new artifact.
 | `chargeback_lost` / `bank_dispute_lost` / investigator confirmed | **Proven** hard truth |
 | Proxy / discovery | Down-weighted; never overwrite proven |
 | `weak_policy_auto_grant` | Weak negative (`weak_policy_negative=1`) |
-| Disposition lag | Default `lag_days: 7` — same-day investigator labels don’t mint |
+| Disposition lag | Default `lag_days: 7`; same-day investigator labels don’t mint |
 
 ```bash
 python scripts/ingest_dispositions.py --orders data/orders.csv --dispositions data/dispositions.csv
@@ -311,7 +311,7 @@ config/
 Promote checklist:
 
 1. Diff YAML / model artifact.  
-2. `backtest.py` — `honesty.promote_ok` true.  
+2. `backtest.py` - `honesty.promote_ok` true.  
 3. `eval_oot_pack.py` green on your pack (strict floors for prod).  
 4. Shadow one market; watch tier mix + proven precision.  
 5. Bump `policy_version` / `model_version`; keep previous artifact for rollback.
@@ -324,13 +324,13 @@ Promote checklist:
 
 1. Check `hard_gated` (should track strong-label rate only).  
 2. If score-driven: raise `decision_thresholds.auto_deny` / `hold_review`.  
-3. Sample FPs for proxy leakage — fix labels + retrain if needed.  
+3. Sample FPs for proxy leakage; fix labels + retrain if needed.  
 4. Do not add rate hard gates.
 
 ### 8.2 Collusion ring not caught
 
 1. Confirm device cluster / UVD / SDK columns present.  
-2. If scores high but tier approve → thresholds — `--tune` or lower soft/hold.  
+2. If scores high but tier approve → thresholds: `--tune` or lower soft/hold.  
 3. If scores low on a recurring shape → label (chargeback/bank/investigator) + retrain.  
 4. Confirm lifecycle + entity-risk refresh is running.
 

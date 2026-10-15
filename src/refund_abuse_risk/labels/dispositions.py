@@ -35,7 +35,7 @@ def apply_dispositions_to_orders(
     for col in LABEL_COLS:
         if col not in out.columns:
             out[col] = 0 if col != "fraud_label_source" else ""
-    # CSV read of empty sources becomes float64 NaN — force object before patches.
+    # CSV read of empty sources becomes float64 NaN - force object before patches.
     out["fraud_label_source"] = (
         out["fraud_label_source"].astype("object").where(out["fraud_label_source"].notna(), "")
     )

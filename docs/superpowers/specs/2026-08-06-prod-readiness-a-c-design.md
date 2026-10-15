@@ -1,11 +1,11 @@
-# Prod-shaped contracts + overlay promote — design
+# Prod-shaped contracts + overlay promote - design
 
 Date: 2026-08-06  
 Status: approved + implemented (2026-08-06)  
 Tracks: **live-shaped data path** + **promote-to-serve overlays**  
 Acceptance bar: **contracts + prod-shaped fixture pack** (not live warehouse)
 
-> Privacy: historical filename retained for links. Internal quality ratings are private — see [docs/GRADING.md](../../GRADING.md).
+> Privacy: historical filename retained for links. Internal quality ratings are private - see [docs/GRADING.md](../../GRADING.md).
 
 Companion: [CUTOVER.md](../../CUTOVER.md) · [OPS_RUNBOOK.md](../../OPS_RUNBOOK.md) · [ARCHITECTURE.md](../../ARCHITECTURE.md)
 
@@ -30,7 +30,7 @@ Explicitly **not** in this change: live warehouse URIs, HTTP serve API, GraphBEA
 
 ---
 
-## 3. Track — live-shaped data path
+## 3. Track - live-shaped data path
 
 ### 3.1 Strict floors
 
@@ -54,9 +54,9 @@ Path: `data/oot_packs/prod_shaped_v1/`
 
 Required files:
 
-- `manifest.yaml` — `profile: prod_shaped`, `floors_file` or inline strict floors, `require_dispositions: true`, `holdout_days`
-- `orders.csv` — includes market/vertical/amount/event_ts; joinable to dispositions
-- `dispositions.csv` — proven outcomes (`chargeback_lost` and/or `bank_dispute_lost` and investigator labels per `disposition_labels.default.yaml`)
+- `manifest.yaml` - `profile: prod_shaped`, `floors_file` or inline strict floors, `require_dispositions: true`, `holdout_days`
+- `orders.csv` - includes market/vertical/amount/event_ts; joinable to dispositions
+- `dispositions.csv` - proven outcomes (`chargeback_lost` and/or `bank_dispute_lost` and investigator labels per `disposition_labels.default.yaml`)
 - `history.csv`, `devices.csv`, optional `users.csv`
 
 **Schema validation** (new): `scripts/validate_oot_pack.py` (or `--schema-only` on eval):
@@ -68,7 +68,7 @@ Required files:
 **CI policy:**
 
 - Schema + disposition gates: **must pass**
-- Full `eval_oot_pack` against prod floors: **may exit 1** on synth AP — documented; not a green-metric claim
+- Full `eval_oot_pack` against prod floors: **may exit 1** on synth AP - documented; not a green-metric claim
 
 Seed helper: extend `seed_oot_pack.py` with `--profile prod_shaped` or a dedicated seed that writes the pack from closed-loop labels (fixture, not lift).
 
@@ -89,7 +89,7 @@ Seed helper: extend `seed_oot_pack.py` with `--profile prod_shaped` or a dedicat
 
 ---
 
-## 4. Track — promote-to-serve overlays
+## 4. Track - promote-to-serve overlays
 
 ### 4.1 Promote CLI
 
@@ -108,7 +108,7 @@ Steps (promote):
 
 1. Load overlays; optionally filter to promote-eligible only if metadata present; otherwise trust fragment from `recommended_overlays_from_slices` (already filtered).
 2. Backup current OP → `config/backups/operating_point.<utc>.yaml`.
-3. Write OP with replaced `decision_threshold_overlays`; bump `policy_version` when present (append or patch — implement as: if string endswith digits, increment; else append `.overlaysN`).
+3. Write OP with replaced `decision_threshold_overlays`; bump `policy_version` when present (append or patch - implement as: if string endswith digits, increment; else append `.overlaysN`).
 4. Print summary (n overlays, backup path).
 
 Rollback: copy newest backup over OP path.

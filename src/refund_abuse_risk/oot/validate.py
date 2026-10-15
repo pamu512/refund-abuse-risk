@@ -57,7 +57,7 @@ def validate_oot_pack(
     """
     Validate pack layout + disposition/proven contract (schema only).
 
-    Uses ``min_pack_n`` for pack size — never ``min_holdout_n`` (eval-only after
+    Uses ``min_pack_n`` for pack size - never ``min_holdout_n`` (eval-only after
     the time split). Does **not** measure model lift; that is ``eval_oot_pack.py``.
     """
     pack = Path(pack_dir)

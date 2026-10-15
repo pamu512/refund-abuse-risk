@@ -38,7 +38,7 @@ def mint_uv_asof_daily(
     """
     Mint discovery labels from UV edges scored on history **before each order day**.
 
-    For orders on calendar day D (UTC), edges use only ``event_ts < D`` — no
+    For orders on calendar day D (UTC), edges use only ``event_ts < D`` - no
     same-day / future refund leakage into labels.
     """
     out = frame.copy()

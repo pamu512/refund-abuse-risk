@@ -1,8 +1,8 @@
-# Prod-shaped contracts + overlay promote — implementation plan
+# Prod-shaped contracts + overlay promote - implementation plan
 
-> Privacy: historical filename retained for links. Internal quality ratings are private — see [docs/GRADING.md](../../GRADING.md).
+> Privacy: historical filename retained for links. Internal quality ratings are private - see [docs/GRADING.md](../../GRADING.md).
 
-> **For agentic workers:** Execute task-by-task. Steps use checkbox syntax.
+> **For implementers:** Execute task-by-task. Steps use checkbox syntax.
 
 **Goal:** Ship live-shaped data contracts (strict floors, prod_shaped pack, require-dispositions, ops freshness) and overlay promote/rollback without claiming live lift.
 
@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Acceptance bar: contracts + prod-shaped fixture pack (spec § acceptance **2**)
-- Synth AP may fail prod floors — CI gates schema/dispositions, not prod AP green
+- Synth AP may fail prod floors - CI gates schema/dispositions, not prod AP green
 - No HTTP API / S3 / GraphBEAN
 - Do not commit unless user asks
 

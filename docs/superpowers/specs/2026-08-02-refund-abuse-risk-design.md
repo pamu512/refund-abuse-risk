@@ -1,7 +1,7 @@
-# Refund Abuse / Fraud Risk — Design
+# Refund Abuse / Fraud Risk - Design
 
 Date: 2026-08-02  
-Status: implemented (v0.2 — head-specific features, PIT aggregations, score blend)
+Status: implemented (v0.2 - head-specific features, PIT aggregations, score blend)
 
 ## Problem
 
@@ -32,11 +32,11 @@ Fraud proxies (configurable): large device cluster ∧ multi-account device ∧ 
 
 ## Architecture
 
-1. **Feature builders** — rolling refund counts/rates/%GMV; device cluster stats; link co-occurrence + refund lift; order/claim context.
-2. **Two-head model** — calibrated gradient boosting per head; proxy sample weights on fraud head.
-3. **Entity prior band** — entity/link/device prior sets floor/ceiling; order head scores move within band.
-4. **Policy overlay** — hard gates from strong fraud labels, rolling caps, high link/device scores → force `auto_deny`.
-5. **Cache** — precompute on lifecycle events; rescore open orders when entity/link risk moves by ≥ configured delta.
+1. **Feature builders** - rolling refund counts/rates/%GMV; device cluster stats; link co-occurrence + refund lift; order/claim context.
+2. **Two-head model** - calibrated gradient boosting per head; proxy sample weights on fraud head.
+3. **Entity prior band** - entity/link/device prior sets floor/ceiling; order head scores move within band.
+4. **Policy overlay** - hard gates from strong fraud labels, rolling caps, high link/device scores → force `auto_deny`.
+5. **Cache** - precompute on lifecycle events; rescore open orders when entity/link risk moves by ≥ configured delta.
 
 ## Output contract
 

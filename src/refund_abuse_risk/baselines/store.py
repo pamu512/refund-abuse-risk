@@ -273,7 +273,7 @@ class BehaviorBaselineStore:
         ):
             return self.get(entity_key, market=market, vertical=vertical)
 
-        # Pairs without support do not qualify / update clean path — still record score.
+        # Pairs without support do not qualify / update clean path - still record score.
         pair_kinds = {"ud", "uv", "vd", "uvd"}
         support_ok = (entity_kind not in pair_kinds) or (
             float(support) >= float(pair_min_cooccur)

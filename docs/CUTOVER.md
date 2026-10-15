@@ -1,4 +1,4 @@
-# Cutover checklist — live Downstream wiring
+# Cutover checklist - live Downstream wiring
 
 In-repo ladder is closed. Remaining work is Downstream wiring, not more synth multipass.
 
@@ -24,7 +24,7 @@ In-repo ladder is closed. Remaining work is Downstream wiring, not more synth mu
 1. Point `config/feeds.warehouse.yaml` `uri` / `query` at live investigator + ops DBs (or export cron → sqlite/CSV).
 2. Replace / augment `prod_shaped_v1` with a **live** pack; keep `config/oot_floors.prod.yaml` (schema CI uses the fixture; live AP must clear prod floors).
 3. Wire vendor SDK / vision event stream into `sdk_events` fixture path or claim-path `refresh_order`.
-4. Cron: `./scripts/ops_overnight.sh` with `FEEDS_CONFIG` / `OOT_PACK` / `--require-promote`; set `PROMOTE_OVERLAYS=1` when overlays file is non-empty — see [OPS_RUNBOOK.md](OPS_RUNBOOK.md).
+4. Cron: `./scripts/ops_overnight.sh` with `FEEDS_CONFIG` / `OOT_PACK` / `--require-promote`; set `PROMOTE_OVERLAYS=1` when overlays file is non-empty; see [OPS_RUNBOOK.md](OPS_RUNBOOK.md).
 5. Refresh `data/ops_snapshot.json` daily (default OP already sets `max_ops_snapshot_age_hours: 24`; no baked demo snapshot).
 6. Pass `delivered_ts` / `claim_ts` on score requests so policy window features fire.
 7. Keep Architecture boundaries: no claim-path live graph walks; Downstream owns API/queue ([ARCHITECTURE.md](ARCHITECTURE.md)).

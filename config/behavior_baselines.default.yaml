@@ -1,4 +1,4 @@
-# Behavioral baselines — head-score space (same units as tier thresholds).
+# Behavioral baselines - head-score space (same units as tier thresholds).
 enabled: true
 baseline_version: "0.3.0"
 

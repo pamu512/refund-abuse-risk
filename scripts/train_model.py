@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Train two-head model — P0 serve-path features + capped as-of discovery multipass."""
+"""Train two-head model - P0 serve-path features + capped as-of discovery multipass."""
 
 from __future__ import annotations
 
@@ -202,7 +202,7 @@ def main() -> None:
         feature_stats = {
             "feature_source": "frame",
             "orders_sampled": int(len(feat)),
-            "warning": "synthetic feature_frame — not serve-path parity",
+            "warning": "synthetic feature_frame; not serve-path parity",
         }
 
     if args.no_history:

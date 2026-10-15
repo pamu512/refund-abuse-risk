@@ -1,6 +1,6 @@
-# Market × vertical slice hardening — Implementation Plan
+# Market × vertical slice hardening - Implementation Plan
 
-> **For agentic workers:** Implement tasks in order; each ends with a runnable check.
+> **For implementers:** Implement tasks in order; each ends with a runnable check.
 
 **Goal:** Policy prior features + proven slice eval/ECE promote gate + overlay suggest/write.
 
@@ -11,10 +11,10 @@
 ## File map
 
 - `config/vertical_policy.default.yaml` (new)
-- `src/refund_abuse_risk/config.py` — loader
-- `src/refund_abuse_risk/features/policy_priors.py` (new) — lookup + feature dict
-- `src/refund_abuse_risk/features/builders.py` — wire columns
-- `scripts/backtest.py` — slice proven/ECE, promote, `--write-slice-overlays`
+- `src/refund_abuse_risk/config.py` - loader
+- `src/refund_abuse_risk/features/policy_priors.py` (new) - lookup + feature dict
+- `src/refund_abuse_risk/features/builders.py` - wire columns
+- `scripts/backtest.py` - slice proven/ECE, promote, `--write-slice-overlays`
 - `tests/test_policy_priors_and_slices.py` (new)
 
 ## Tasks

@@ -1,4 +1,4 @@
-# Proposed-rule ingest (no analyst portal) — design
+# Proposed-rule ingest (no analyst portal) - design
 
 Date: 2026-08-06  
 Status: approved for implementation (Approach A)  
@@ -24,7 +24,7 @@ Default path is **shadow only**. Live writes require an explicit config flag or 
 
 - Analyst / review portal UI
 - Auto overnight ingest without an env flag
-- Full GraphBEAN (neural) — GraphBEAN-lite proposals may be sources; ingest treats them as YAML proposals only
+- Full GraphBEAN (neural) - GraphBEAN-lite proposals may be sources; ingest treats them as YAML proposals only
 - Loosening thresholds (merge never raises soft/hold cutoffs; only tighten)
 - Claiming loss reduction from ingested rules
 - Replacing HIL tuner for global head-threshold ladder jumps
@@ -35,8 +35,8 @@ Default path is **shadow only**. Live writes require an explicit config flag or 
 
 **Approach A (approved):**
 
-1. `config/rule_ingest.default.yaml` — gates, paths, live switch
-2. `scripts/ingest_proposed_rules.py` — thin CLI over merge helpers
+1. `config/rule_ingest.default.yaml` - gates, paths, live switch
+2. `scripts/ingest_proposed_rules.py` - thin CLI over merge helpers
 
 Reuse existing patterns from `promote_overlays.py` (OP backup, dry-run, JSON summary) and overnight `when_env` optional steps. Prefer library helpers under `refund_abuse_risk` only if the CLI would otherwise grow past a thin wrapper; no new package required if helpers stay in the script or a small module next to segment anomaly / control plane.
 
@@ -107,7 +107,7 @@ Minimum fields:
 **Overlay**
 
 - `market`, `vertical` (strings)
-- Optional: `soft_friction`, `hold_review`, `deny` absolute thresholds **or** `suggested.soft_friction_delta` / `hold_review_delta` (applied relative to current resolved / global ladder at ingest time — deltas only tighten)
+- Optional: `soft_friction`, `hold_review`, `deny` absolute thresholds **or** `suggested.soft_friction_delta` / `hold_review_delta` (applied relative to current resolved / global ladder at ingest time - deltas only tighten)
 - `mode`: `shadow` \| `live` (coerced per live policy)
 - `id` optional; if absent, derive stable id from `source|market|vertical|kind`
 
@@ -155,7 +155,7 @@ Exit codes:
 
 ## 7. Conflict policy
 
-### Overlays — merge-tighten (stricter wins)
+### Overlays - merge-tighten (stricter wins)
 
 For each proposal overlay matching `(market, vertical)`:
 
@@ -166,7 +166,7 @@ For each proposal overlay matching `(market, vertical)`:
 
 Delta application: if only deltas are present, resolve base = current overlay thresholds if present else global `decision_thresholds`, then `new = base + delta` with the constraint that resulting values must be ≤ base for tighten-only deltas (negative deltas expected). Positive deltas that would loosen → **reject that key** (log; do not apply).
 
-### Effect / challenge — skip-if-id-exists
+### Effect / challenge - skip-if-id-exists
 
 - If proposal `id` already exists in `rules` / `challenge_rules` → skip (no overwrite, no reorder).
 - If new → append at end (first-match-wins semantics of existing engine unchanged for prior rules).
@@ -202,8 +202,8 @@ Recommended order:
 
 1. `segment_anomalies` (optional)
 2. `graphbean_lite` (optional)
-3. `ingest_proposed_rules` — `optional: true`, `when_env: INGEST_PROPOSED_RULES`
-4. `promote_overlays` — unchanged (`when_env: PROMOTE_OVERLAYS`)
+3. `ingest_proposed_rules` - `optional: true`, `when_env: INGEST_PROPOSED_RULES`
+4. `promote_overlays` - unchanged (`when_env: PROMOTE_OVERLAYS`)
 
 Rationale: ingest can merge proposal overlays into OP in shadow form; `promote_overlays` remains the backtest-driven path for slice-recommended overlays. Operators may enable one, both, or neither. Ingest does **not** imply promote eligibility.
 

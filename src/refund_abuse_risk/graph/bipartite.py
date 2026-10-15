@@ -81,7 +81,7 @@ def apply_edge_shuffle_null(
     Demote elevated edges whose anomaly is not above an edge-shuffle null percentile.
 
     Shuffles ``vendor_id`` within market×vertical so refund mass is preserved but
-    user↔vendor pairing is destroyed — a cheap GraphBEAN-precursor honesty check.
+    user↔vendor pairing is destroyed - a cheap GraphBEAN-precursor honesty check.
     """
     null_cfg = dict(cfg.get("null_baseline") or {})
     stats: dict[str, Any] = {

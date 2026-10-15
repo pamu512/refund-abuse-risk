@@ -1,4 +1,4 @@
-# Production feeds (hybrid) — design
+# Production feeds (hybrid) - design
 
 Approved earlier; implementing 2026-08-04 with honesty knobs.
 

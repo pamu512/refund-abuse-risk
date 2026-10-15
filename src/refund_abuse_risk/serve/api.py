@@ -1,4 +1,4 @@
-"""Minimal claim-path score HTTP API (stdlib) — Downstream should terminate TLS."""
+"""Minimal claim-path score HTTP API (stdlib) - Downstream should terminate TLS."""
 
 from __future__ import annotations
 
@@ -189,7 +189,7 @@ def serve_forever(cfg: ScoreApiConfig) -> None:
         )
     if cfg.host in {"0.0.0.0", "::"} and not (cfg.tls_certfile and cfg.tls_keyfile):
         _LOG.warning(
-            "binding %s without TLS — terminate TLS at a reverse proxy or set cert/key",
+            "binding %s without TLS; terminate TLS at a reverse proxy or set cert/key",
             cfg.host,
         )
     handler = make_handler_class(cfg)
@@ -203,7 +203,7 @@ def serve_forever(cfg: ScoreApiConfig) -> None:
         scheme = "http"
         if cfg.host != "127.0.0.1":
             _LOG.warning(
-                "serving plain HTTP on %s — use TLS cert/key or localhost-only bind",
+                "serving plain HTTP on %s; use TLS cert/key or localhost-only bind",
                 cfg.host,
             )
     print(

@@ -18,7 +18,7 @@ def stratified_order_sample(
     minority_oversample: float = 2.0,
     minority_frac_cap: float = 0.5,
 ) -> pd.DataFrame:
-    """Downsample while mildly oversampling abuse/fraud — never a 100% minority bag."""
+    """Downsample while mildly oversampling abuse/fraud - never a 100% minority bag."""
     if n <= 0 or len(orders) <= n:
         return orders.reset_index(drop=True)
     rng = np.random.default_rng(int(random_state))

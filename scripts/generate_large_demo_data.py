@@ -95,7 +95,7 @@ def main() -> None:
     # Scale to target history count.
     scale = n_history / max(int(hist_per_user.sum()), 1)
     hist_per_user = np.maximum(3, np.floor(hist_per_user * scale).astype(int))
-    # Spread remainder across users — dumping onto [0] made one user span decades.
+    # Spread remainder across users - dumping onto [0] made one user span decades.
     diff = int(n_history - int(hist_per_user.sum()))
     if diff != 0:
         order = rng.permutation(n_users)
@@ -466,7 +466,7 @@ def main() -> None:
     devices.to_csv(out / "devices.csv", index=False)
     users.to_csv(out / "users.csv", index=False)
     feature_frame.to_parquet(out / "feature_frame.parquet", index=False)
-    # CSV fallback if parquet engine missing in some envs — also write csv.gz
+    # CSV fallback if parquet engine missing in some envs - also write csv.gz
     feature_frame.to_csv(out / "feature_frame.csv.gz", index=False, compression="gzip")
 
     summary = {
