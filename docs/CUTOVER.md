@@ -14,7 +14,7 @@ In-repo ladder is closed. Remaining work is Downstream wiring, not more synth mu
 - [x] Prod-shaped contracts + overlay promote: `oot_floors.prod.yaml`, `data/oot_packs/prod_shaped_v1/`, `validate_oot_pack.py`, `--require-dispositions`, ops snapshot max-age gate, `promote_overlays.py` (+ rollback)
 - [x] HTTP + S3 feed drivers (`http` / `s3` https or boto3); `feeds.http.example.yaml`
 - [x] `config/ops.overnight.prod.yaml` (require-dispositions, prod pack schema, require_promote)
-- [x] Minimal claim-path HTTP API (`scripts/serve_api.py`, Bearer / X-Api-Token)
+- [x] Fixture-precompute claim-path HTTP demo (`scripts/serve_api.py`, Bearer / X-Api-Token)
 - [x] Audit C/H remediation: fail-closed promote, costed None, proven∪abuse stacker,
       proven ECE gates, class_balance off, mint-feature holdout, temporal_ok promote,
       HTTP allowed_hosts, serve audit/rate-limit/optional TLS
@@ -40,6 +40,6 @@ python scripts/ops_overnight.py --profile config/ops.overnight.prod.yaml --dry-r
 # Live:
 # SCORE_API_TOKEN=... PROMOTE_OVERLAYS=1 \
 #   python scripts/ops_overnight.py --profile config/ops.overnight.prod.yaml --require-promote
-# Claim-path API (precomputed jsonl cache):
-# SCORE_API_TOKEN=... python scripts/serve_api.py --cache-jsonl data/score_cache.jsonl
+# Fixture-precompute claim-path demo (not live scoring):
+# SCORE_API_TOKEN=... python scripts/serve_api.py --data-dir data/oot_packs/prod_shaped_v1
 ```

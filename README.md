@@ -11,7 +11,7 @@ It turns order, history, device, and closed-loop label feeds into:
 
 **Design goal:** catch recurring behavioral patterns at high recall on labeled pattern mass. Do not chase novel edge cases with hard-coded rules.
 
-**Status (2026-08-06):** In-repo toolkit with prod-shaped OOT contracts, overlay promote/rollback, HTTP/S3 feed drivers, `ops.overnight.prod.yaml`, and minimal `serve_api.py`. Live warehouse URIs / real chargebacks remain Downstream — [`docs/CUTOVER.md`](docs/CUTOVER.md).
+**Status (2026-08-06):** In-repo toolkit with prod-shaped OOT contracts, overlay promote/rollback, HTTP/S3 feed drivers, `ops.overnight.prod.yaml`, and a fixture-precompute claim-path HTTP demo (`scripts/serve_api.py`). Live warehouse URIs / real chargebacks remain Downstream — [`docs/CUTOVER.md`](docs/CUTOVER.md).
 
 **Internal quality ratings are private** — do not publish letter grades or rubric scores in README/status/comms. See [`docs/GRADING.md`](docs/GRADING.md).
 
