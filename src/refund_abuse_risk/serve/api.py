@@ -1,4 +1,7 @@
-"""Minimal claim-path score HTTP API (stdlib) — Downstream should terminate TLS."""
+"""Claim-path HTTP reader for a precomputed OrderRiskSnapshot cache (stdlib).
+
+Not a live scorer. Downstream should terminate TLS.
+"""
 
 from __future__ import annotations
 

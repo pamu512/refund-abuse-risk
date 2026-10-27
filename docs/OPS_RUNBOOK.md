@@ -215,8 +215,8 @@ PROMOTE_OVERLAYS=1 python scripts/ops_overnight.py --profile config/ops.overnigh
 # HTTP / pre-signed S3 feeds — see config/feeds.http.example.yaml
 python scripts/pull_production_feeds.py --config config/feeds.http.example.yaml
 
-# Minimal claim-path API
-SCORE_API_TOKEN=dev-token python scripts/serve_api.py --cache-jsonl data/score_cache.jsonl
+# Fixture-precompute claim-path demo (not live scoring)
+SCORE_API_TOKEN=dev-token python scripts/serve_api.py --data-dir data/oot_packs/prod_shaped_v1
 # GET /health
 # GET /v1/orders/{order_id}/risk  (Authorization: Bearer …)
 ```

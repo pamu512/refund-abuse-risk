@@ -12,7 +12,7 @@ Internal quality ratings / letter grades are private — see [GRADING.md](GRADIN
 
 | In this repo | Explicitly out (Downstream) |
 |---|---|
-| Library + CLI scripts + minimal score HTTP API | Multi-tenant gateway, queue workers, HA |
+| Library + CLI scripts + fixture-precompute claim-path HTTP demo | Multi-tenant gateway, queue workers, HA |
 | In-process / file / jsonl claim cache | Redis / regional score store |
 | SQLite HIL control plane | Postgres control plane HA |
 | `local_dir` + `sqlite` + `http` + `s3` (https or boto3) feeds | Managed IAM / warehouse ownership |

@@ -381,7 +381,7 @@ Promote checklist:
 | `promote_overlays.py` | Apply/rollback `decision_threshold_overlays` with OP backup |
 | `ingest_proposed_rules.py` | Merge `data/proposed_rules` into OP / effect_rules (shadow default; `rule_ingest.enabled`) |
 | `seed_oot_pack.py --profile prod_shaped` | Prod-shaped fixture pack |
-| `serve_api.py` | Minimal claim-path HTTP API (`SCORE_API_TOKEN`) |
+| `serve_api.py` | Fixture-precompute claim-path HTTP demo (`SCORE_API_TOKEN`) |
 | `ops_overnight.py --profile config/ops.overnight.prod.yaml` | Prod overnight (dispositions + promote gates) |
 
 Overnight / promote tree / config inventory: [OPS_RUNBOOK.md](OPS_RUNBOOK.md).  
