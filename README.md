@@ -15,7 +15,7 @@ It turns order, history, device, and closed-loop label feeds into:
 
 **Internal quality ratings are private** — do not publish letter grades or rubric scores in README/status/comms. See [`docs/GRADING.md`](docs/GRADING.md).
 
-**Not a live GNN / graph database.** `graphbean_lite` is a Ridge feature decoder on UV edges (shadow proposals only), not GraphBEAN/RGCN.
+**Not a live GNN / graph database.** `run_ridge_feature_decoder` (`scripts/run_ridge_feature_decoder.py`) is a Ridge decoder on UV edges (shadow proposals only). Remaining `graphbean_*` identifiers are frozen historical ingest/ops wire names, not a GNN or GraphBEAN product claim.
 
 ---
 
@@ -174,7 +174,7 @@ Labels: `abuse_label`, `fraud_label`, `fraud_label_source` (`proven` / `proxy` /
 ## What this is not
 
 - Not a payment blocker or account-suspension system  
-- Not a live GNN / graph database (`graphbean_lite` = Ridge feature decoder only)  
+- Not a live GNN / graph database (`run_ridge_feature_decoder` = Ridge feature decoder only; remaining `graphbean_*` ids are frozen historical ingest/ops wire names)  
 - Not a case-management UI  
 - Not a legal “fraud proven” workflow (it **consumes** those labels)  
 - Not an attempt to catch every novel attack with YAML rules

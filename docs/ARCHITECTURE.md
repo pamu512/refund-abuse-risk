@@ -28,7 +28,7 @@ Single-process claim cache and file OP are **design**, not unfinished scaffoldin
 |---|---|---|
 | `schemas` | Snapshot / evidence / tier / effect types | Persistence |
 | `features` | PIT order feature frame / row builders | Labels, model fit |
-| `graph` | UV bipartite discovery + Ridge `graphbean_lite` decoder (not a GNN), as-of + null | Serve-path scoring |
+| `graph` | UV bipartite discovery + Ridge `run_ridge_feature_decoder` (not a GNN), as-of + null | Serve-path scoring |
 | `labels` | Disposition / weight contracts | Feed I/O |
 | `model` | Two-head train / predict / class balance | Threshold promote |
 | `scoring` | Policy, decision stacker, thresholds, Brier/adaptive ECE, Wilson+bootstrap precision CI, PSI, calibrator | Training loops |
@@ -40,6 +40,8 @@ Single-process claim cache and file OP are **design**, not unfinished scaffoldin
 | `config` (module) | YAML loaders for `config/*.default.yaml` | Secrets |
 
 Scripts under `scripts/` are thin CLIs over these packages. Prefer importing library functions in Downstream services.
+
+Remaining `graphbean_*` identifiers (proposal kind, score columns, overnight step id, default output filenames) are frozen historical ingest/ops wire names, not a GNN or GraphBEAN product claim.
 
 ---
 

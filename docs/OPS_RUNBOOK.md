@@ -186,9 +186,10 @@ python scripts/query_decision_archive.py --limit 20
 # P1b — weak LF labels (proven rows untouched)
 python scripts/mint_weak_labels.py --with-features
 
-# P2a — GraphBEAN-lite UV recon → proposed actions (shadow only; never auto-merge)
-python scripts/run_graphbean_lite.py --history data/history.csv
+# P2a — Ridge feature decoder UV recon → proposed actions (shadow only; never auto-merge)
+python scripts/run_ridge_feature_decoder.py --history data/history.csv
 # → data/proposed_rules/graphbean_lite.proposed.yaml
+# Remaining graphbean_* identifiers are frozen historical ingest/ops wire names, not a GNN or GraphBEAN product claim.
 # Unknown kinds (e.g. graphbean_edge) are skipped by ingest until mapped to overlay/effect/challenge.
 
 # P2b — risk challenges live under config/effect_rules.default.yaml (challenge_rules);
