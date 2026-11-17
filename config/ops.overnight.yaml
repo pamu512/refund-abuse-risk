@@ -61,7 +61,8 @@ steps:
       - --orders
       - "{orders_csv}"
 
-  # P2a: GraphBEAN-lite UV recon anomalies → proposed actions only (never auto-enforce).
+  # Historical overnight step id (frozen ingest/ops wire name, not a GNN/GraphBEAN product).
+  # Script path is the deprecated shim; default outputs stay data/proposed_rules/graphbean_lite.*.
   - id: graphbean_lite
     optional: true
     argv:

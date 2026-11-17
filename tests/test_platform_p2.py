@@ -1,6 +1,11 @@
-"""P2a GraphBEAN-lite proposals + P2b risk-challenge resolution."""
+"""P2a Ridge feature decoder proposals + P2b risk-challenge resolution."""
 
 from __future__ import annotations
+
+import subprocess
+import sys
+import warnings
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -9,12 +14,15 @@ from refund_abuse_risk.control_plane.challenges import (
     resolve_risk_challenge,
     tier_to_risk_challenge,
 )
-from refund_abuse_risk.graph.graphbean_lite import run_graphbean_lite
+from refund_abuse_risk.graph import __all__ as graph_public_api
+from refund_abuse_risk.graph.ridge_feature_decoder import run_ridge_feature_decoder
 from refund_abuse_risk.schemas.models import RiskChallenge, SuggestedTier
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _dense_uv_history(n_users: int = 12, n_vendors: int = 8, orders_per_edge: int = 4) -> pd.DataFrame:
-    """Enough UV edges for GraphBEAN-lite min_edges=20 with a few hot colluders."""
+    """Enough UV edges for Ridge decoder min_edges=20 with a few hot colluders."""
     rows: list[dict] = []
     oid = 0
     rng = np.random.default_rng(7)
@@ -40,9 +48,9 @@ def _dense_uv_history(n_users: int = 12, n_vendors: int = 8, orders_per_edge: in
     return pd.DataFrame(rows)
 
 
-def test_p2a_graphbean_lite_proposals_shadow_only() -> None:
+def test_p2a_ridge_feature_decoder_proposals_shadow_only() -> None:
     history = _dense_uv_history()
-    result = run_graphbean_lite(
+    result = run_ridge_feature_decoder(
         history,
         cfg={"min_edges": 20, "edge_z_threshold": 1.5, "node_z_threshold": 1.5},
     )
@@ -57,7 +65,7 @@ def test_p2a_graphbean_lite_proposals_shadow_only() -> None:
         assert a["kind"] == "graphbean_edge"
 
 
-def test_p2a_graphbean_lite_skips_tiny_graphs() -> None:
+def test_p2a_ridge_feature_decoder_skips_tiny_graphs() -> None:
     tiny = pd.DataFrame(
         [
             {
@@ -70,9 +78,51 @@ def test_p2a_graphbean_lite_skips_tiny_graphs() -> None:
             }
         ]
     )
-    result = run_graphbean_lite(tiny, cfg={"min_edges": 20})
+    result = run_ridge_feature_decoder(tiny, cfg={"min_edges": 20})
     assert result["n_edges"] == 0 or result["n_anomalous_edges"] == 0
     assert result["auto_enforce"] is False
+
+
+def test_run_graphbean_lite_alias_is_deprecated_shim() -> None:
+    from refund_abuse_risk.graph.graphbean_lite import run_graphbean_lite
+
+    assert "run_ridge_feature_decoder" in graph_public_api
+    assert "run_graphbean_lite" not in graph_public_api
+    history = _dense_uv_history()
+    cfg = {"min_edges": 20, "edge_z_threshold": 1.5, "node_z_threshold": 1.5}
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", DeprecationWarning)
+        aliased = run_graphbean_lite(history, cfg=cfg)
+    assert any(
+        issubclass(w.category, DeprecationWarning)
+        and "run_ridge_feature_decoder" in str(w.message)
+        for w in caught
+    ), [str(w.message) for w in caught]
+    current = run_ridge_feature_decoder(history, cfg=cfg)
+    assert aliased["ok"] is current["ok"]
+    assert aliased["n_edges"] == current["n_edges"]
+    assert aliased["n_anomalous_edges"] == current["n_anomalous_edges"]
+    assert aliased["auto_enforce"] is False
+
+
+def test_run_graphbean_lite_script_shim_is_deprecated() -> None:
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-W",
+            "default",
+            str(ROOT / "scripts" / "run_graphbean_lite.py"),
+            "--help",
+        ],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    combined = f"{proc.stderr}\n{proc.stdout}"
+    assert "deprecated" in combined.lower()
+    assert "run_ridge_feature_decoder.py" in combined
 
 
 def test_p2b_tier_defaults() -> None:
